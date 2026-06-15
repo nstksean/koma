@@ -28,6 +28,7 @@ vi.mock("@/src/sources", () => ({
   DEFAULT_SOURCE: "ttkan",
 }));
 
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { books, chapters } from "@/db/schema";
 import { getChapterView, getOrFetchBook } from "@/lib/books";
@@ -99,6 +100,20 @@ describe("getOrFetchBook", () => {
     expect(fakeAdapter.getChapters).not.toHaveBeenCalled();
     expect(book.id).toBe("b1");
     expect(chs).toHaveLength(2);
+  });
+
+  it("未知書源（無 adapter 且 DB 無此書）→ 丟『找不到本地書』", async () => {
+    await expect(getOrFetchBook("unknown", "x")).rejects.toThrow(
+      "找不到本地書",
+    );
+  });
+
+  it("adapter getBook 失敗 → 錯誤往上拋且不寫入 book", async () => {
+    fakeAdapter.getBook.mockRejectedValue(new Error("fetch 失敗 500"));
+    fakeAdapter.getChapters.mockResolvedValue([ref(1)]);
+
+    await expect(getOrFetchBook(SOURCE, SLUG)).rejects.toThrow("fetch 失敗 500");
+    expect(await db.select().from(books)).toHaveLength(0);
   });
 
   it("命中但已過期 → 重抓、更新 book、只補缺章，且不覆寫已快取內文", async () => {
@@ -201,6 +216,20 @@ describe("getChapterView", () => {
     await expect(getChapterView(SOURCE, SLUG, 99)).rejects.toThrow(
       "找不到章節 idx=99",
     );
+  });
+
+  it("內文為 null 且 adapter 抓取失敗 → 錯誤往上拋且不寫入快取", async () => {
+    await seedFreshBook();
+    fakeAdapter.getChapterContent.mockRejectedValue(
+      new Error("fetch 失敗 502"),
+    );
+
+    await expect(getChapterView(SOURCE, SLUG, 2)).rejects.toThrow(
+      "fetch 失敗 502",
+    );
+    // 抓取失敗 → DB 內該章 content 仍為 null（未被寫入髒資料）。
+    const [c2] = await db.select().from(chapters).where(eq(chapters.idx, 2));
+    expect(c2.content).toBeNull();
   });
 });
 

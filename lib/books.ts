@@ -75,6 +75,7 @@ export async function getOrFetchBook(
   const latestChapterTitle = refs.at(-1)?.title ?? null;
   const title = resolveTitle(source, sourceBookId, detail.title);
 
+  // TODO(上架): BYO 書源 — 上架前改為不託管內容
   await db
     .insert(books)
     .values({
@@ -154,6 +155,7 @@ export async function getChapterView(
   if (!content) {
     if (!adapter) throw new Error("本地書缺少內文");
     content = await adapter.getChapterContent(chapter.sourceUrl);
+    // TODO(上架): BYO 書源 — 上架前改為不託管內容
     await db
       .update(chapters)
       .set({ content, fetchedAt: new Date() })
