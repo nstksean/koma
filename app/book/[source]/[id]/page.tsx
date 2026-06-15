@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, BookOpen } from "lucide-react";
@@ -38,10 +39,31 @@ export default async function BookPage({
       </header>
 
       <section className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">{book.title}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {[book.author, book.category].filter(Boolean).join(" · ") || "—"}
-        </p>
+        <div className="flex gap-4">
+          {/* 書封來自來源站（next.config images.remotePatterns 已放行）；無封面則以圖示佔位。 */}
+          <div className="relative aspect-[3/4] w-24 shrink-0 overflow-hidden rounded-md border border-border bg-muted">
+            {book.cover ? (
+              <Image
+                src={book.cover}
+                alt={`《${book.title}》封面`}
+                fill
+                sizes="96px"
+                className="object-cover"
+                unoptimized
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-muted-foreground">
+                <BookOpen className="size-8" />
+              </div>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-semibold tracking-tight">{book.title}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {[book.author, book.category].filter(Boolean).join(" · ") || "—"}
+            </p>
+          </div>
+        </div>
         {book.intro && (
           <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-foreground/80">
             {book.intro}
