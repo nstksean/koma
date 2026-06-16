@@ -15,6 +15,8 @@ export interface KomaCatProps {
   label?: string;
   /** 章末「睡著」的輕微呼吸動畫;尊重 prefers-reduced-motion(見 globals.css)。 */
   breathing?: boolean;
+  /** 開 app / 進首頁時「伸懶腰」一次的進場動畫;尊重 prefers-reduced-motion(見 globals.css)。 */
+  stretch?: boolean;
   style?: CSSProperties;
 }
 
@@ -30,6 +32,7 @@ export function KomaCat({
   className,
   label,
   breathing = false,
+  stretch = false,
   style,
 }: KomaCatProps) {
   const height = Math.round((size * VIEW_H) / VIEW_W);
@@ -42,7 +45,7 @@ export function KomaCat({
       viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
       width={size}
       height={height}
-      className={cn(breathing && "koma-cat-breathe", className)}
+      className={cn(breathing && "koma-cat-breathe", stretch && "koma-cat-stretch", className)}
       style={style}
       {...a11y}
     >

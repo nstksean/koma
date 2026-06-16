@@ -20,7 +20,7 @@ export default async function HomePage() {
       <header className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="flex items-center gap-2 font-display text-3xl font-semibold tracking-tight">
-            <KomaCat size={38} className="-mb-1 text-brand" />
+            <KomaCat size={38} stretch className="-mb-1 text-brand" />
             Koma
           </h1>
           <p className="text-sm text-muted-foreground">零廣告 · 乾淨 · 中文小說閱讀器</p>

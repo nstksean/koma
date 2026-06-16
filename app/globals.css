@@ -166,3 +166,33 @@
     animation: none;
   }
 }
+
+/* 開 app / 進首頁時,字標貓「伸懶腰」一次(DESIGN 招牌動作)。
+   squash-and-stretch:身體先往兩側拉長再回彈;慵懶、克制、只播一次。 */
+@keyframes koma-cat-stretch {
+  0% {
+    transform: scaleX(0.92) scaleY(0.96);
+    opacity: 0;
+  }
+  35% {
+    transform: scaleX(1.12) scaleY(0.9);
+    opacity: 1;
+  }
+  60% {
+    transform: scaleX(0.97) scaleY(1.04);
+  }
+  100% {
+    transform: scaleX(1) scaleY(1);
+    opacity: 1;
+  }
+}
+.koma-cat-stretch {
+  transform-origin: 50% 80%;
+  /* enter ease-out;long 700ms 配慵懶感;both 保留首末幀避免 FOUC。 */
+  animation: koma-cat-stretch 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .koma-cat-stretch {
+    animation: none;
+  }
+}

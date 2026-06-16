@@ -46,4 +46,11 @@ describe("KomaCat", () => {
     const sleepy = renderToStaticMarkup(createElement(KomaCat, { breathing: true }));
     expect(sleepy).toContain("koma-cat-breathe");
   });
+
+  it("opts into the stretch (伸懶腰) animation only when asked", () => {
+    const plain = renderToStaticMarkup(createElement(KomaCat));
+    expect(plain).not.toContain("koma-cat-stretch");
+    const stretching = renderToStaticMarkup(createElement(KomaCat, { stretch: true }));
+    expect(stretching).toContain("koma-cat-stretch");
+  });
 });
