@@ -35,7 +35,7 @@
 
 | # | 任務 | 產出 | 依賴 |
 |---|------|------|------|
-| T1 | **IQT char-level timestamp spike**（gating） | `scripts/spike-tts-iqt.ts` 真跑出 timestamp 結構 | IQT endpoint + 認證 |
+| T1 | ~~**IQT char-level timestamp spike**（gating）~~ ✅ **2026-06-16 真打完成 → voai.ai 不吐 timestamp（§2.2）** | `scripts/spike-tts-iqt.ts`(真打 voai) | ✅ 已解(API 已拿到) |
 | T2 | 定義 **音源 Provider 抽象** `AudioSourceProvider` + 統一資料形狀 `ChapterAudio` | 介面定義（純 TS） | — |
 | T3 | 實作 **Azure provider**（過渡暫代） | `azureProvider`（Batch synthesis → audio + word boundary JSON） | T2、`scripts/spike-tts-azure.ts` |
 | T4 | 設計 **timestamp JSON schema** + per-chapter 合成流程 | schema 草案（§3） | T2 |
@@ -45,7 +45,7 @@
 | T8 | 接上 **IQT provider**（換源驗證：上層不動） | `iqtProvider` | T1、T2 |
 | T9 | DoD 驗收（§7） | 整條鏈路在實機綠燈 | T1–T8 |
 
-> T1 是 **gating dependency**：IQT 吐不出對齊音檔的 char-level timestamp → 逐字卡拉OK核心賣點不存在。故 T1 與 stage-0 解耦、現在就驗（§8.5）。在 T1 未過前，T3 Azure provider 可先把整條管線跑通（暫代音源），不阻塞。
+> T1 是 **gating dependency**:IQT 吐不出對齊音檔的 char-level timestamp → 逐字卡拉OK核心賣點不存在。**✅ 2026-06-16 已真打:答案是 voai.ai VoiceAPI v1【不提供任何 timestamp】(§2.2)** —— 不是賣點消失,而是 timing 來源要改走 forced alignment(對 IQT 音檔做強制對齊)或內部請 voai 團隊加 boundary 輸出。Azure 暫代路線(T3)不受影響,仍可獨立把整條管線跑通,不阻塞。
 
 ---
 
@@ -86,7 +86,7 @@ interface AudioSourceProvider {
 ```
 
 - **Azure provider（T3）**：走 **Batch synthesis** REST（長文離線合成），合成後下載 audio + `*.word.json` boundary 檔，把 word boundary 正規化成 `CharTimestamp[]`。⚠️ **實測 Azure 對中文落「詞級」非字級**（見 §2.1），故正規化時須把多字詞 boundary **依字數均分時間切到字級**；`audioOffset_100ns / 10000 = startMs`。見 [`scripts/spike-tts-azure.ts`](../../../scripts/spike-tts-azure.ts)。
-- **IQT provider（T8）**：對齊 [`scripts/spike-tts-iqt.ts`](../../../scripts/spike-tts-iqt.ts) 的 `parseResponse`，把 IQT 回傳 map 成同一個 `CharTimestamp[]`。**這一步只新增一個檔，上層零改動** —— 即「換源不重寫」的兌現點。
+- **IQT provider（T8）**:⚠️ **2026-06-16 實測:voai.ai 回的是純音檔、無 timestamp(§2.2)**,故 IQT provider 無法只靠 API 回傳 map 出 `CharTimestamp[]` —— 須在合成後對「IQT 音檔 + 章節純文字」做 **forced alignment** 反推 timing(或等內部 voai 團隊加 boundary 輸出)。對齊器多為 word 級 → 沿用 §2.1.1 的「詞→字均分」正規化。換源切點(`AudioSourceProvider`)不變,上層仍零改動;改變的只是 provider 內部「timing 從哪來」。
 - **ElevenLabs provider（備選）**：`with-timestamps` 的 `alignment.characters` 直接就是 per-char，map 最直接（見 [`scripts/spike-tts-eleven.ts`](../../../scripts/spike-tts-eleven.ts)）。
 
 ---
@@ -104,7 +104,7 @@ interface AudioSourceProvider {
 
 **淨結論**:Azure 暫代音源**可支撐卡拉OK逐字高亮**——雖非純字級,但詞級 boundary 帶 char offset + duration,均分到字級的 fallback 已驗證可行,**不需為了字級換音源**。production 正解仍走 Batch synthesis 的 `[n].word.json`（欄位與 SDK `wordBoundary` 同構）。此結果讓 §1 的 `CharTimestamp[]` 形狀不變,只是 Azure provider 多一步「詞→字均分」正規化。
 
-> 對照 T1（IQT, gating）:若 IQT 能直接吐**純字級** timestamp,則 IQT provider 連均分都省;Azure 已先證明「就算只有詞級也做得出來」,降低了整個賣點的風險。
+> 對照 T1（IQT, gating）:**2026-06-16 真打證明 voai.ai 根本不吐 timestamp(§2.2)** —— 原本「IQT 直接吐純字級」的樂觀假設不成立。因此 Azure 這條「就算只有詞級也均分得出字級」的暫代路線,從「過渡備案」升格為**現階段唯一已驗證可逐字高亮的音源**,風險對沖價值更高。
 
 ### 2.1.1 詞→字均分正規化（可單測純函式）
 
@@ -152,6 +152,27 @@ function azureWordsToChars(
 - **詞間停頓**:boundary 間的 gap(實測「深」止 988ms、「,」起 1088ms,中間 100ms 靜音)落在字與字之間的留白,不影響高亮——`activeCharIndex` 在 gap 期間停在前一字即可。若要更貼,可把本詞末字 `endMs` 補到「下一個 Word boundary 的 startMs」。
 - **offset 正規化是鐵則**:`offsetBase` 算錯 → 整章 `charIndex` 全平移錯位(§3.2)。最穩做法是 provider 改用 plain-text 輸入讓 `offsetBase=0`,徹底免去 SSML 前綴長度的脆弱依賴。
 - **未來相容**:IQT/Eleven 若原生 per-char(`wordLength=1`),此函式對它們是 no-op(每詞一字、均分=原值),等於免費複用同一條正規化路徑。
+
+---
+
+## 2.2 IQT(voai.ai)真打實測結論（2026-06-16,T1 — gating 未知數已釘死)
+
+> Status: **🛑 voai.ai VoiceAPI v1 不提供任何 timestamp。** 真打 `npm run spike:tts:iqt`(base `https://connect.voai.ai`、auth `x-api-key`、speaker `雨榛/預設`、version `Classic`、同 Azure 文本)。
+
+| 判定項 | 實測 | 影響 |
+|--------|------|------|
+| **回應形態** | `/TTS/Speech`(簡易)與 `/TTS/generate-voice`(進階)都只回 `audio/wav`(RIFF/WAVE PCM 16-bit mono 44.1kHz) | 純音檔,**沒有對齊資料** |
+| **timestamp / 字幕** | ❌ **完全沒有** —— 回應 header 僅 `x-bit-depth / x-channels / x-sample-rate / x-used-quota / content-disposition`;body 是二進位音檔;無 word/char boundary、無 SRT/VTT、無 alignment | 逐字卡拉OK高亮**無法直接靠 IQT 驅動** |
+| **OpenAPI spec** | grep 全份 `/swagger/tts/swagger.json` 對 `timestamp\|subtitle\|align\|boundary\|word\|mark\|offset\|phoneme` **零命中**;5 個 endpoint(GetSpeaker / Speech / generate-voice / generate-dialogue / Key.Usage)無一暴露對齊輸出 | 非「欄位沒填」,是 **API 本身不具此能力** |
+| **API 細節(供 provider 接線)** | auth=`x-api-key` header(非 Bearer);`version` 為**必填**且須與 speaker 所屬 model 對應(Classic / Neo / Sota+);配額 `GET /Key/Usage`;音檔走 `content-disposition` attachment | 與先前 spike 骨架假設不同,已更正 [`spike-tts-iqt.ts`](../../../scripts/spike-tts-iqt.ts) |
+
+**淨結論(推翻先前假設):** 先前計畫假設「最終換成 IQT,IQT 會吐(理想是純字級)timestamp,Azure 只是暫代」。**實測證明 IQT 這端的 timestamp 並不存在** —— `AudioSourceProvider` 換源切點仍成立,但 **IQT provider 拿不到現成 timestamp**,逐字 timing 必須另尋來源。前進路線(擇一,非互斥):
+
+- **A. Forced alignment(技術自主解,推薦主路):** 把 IQT 合成的 WAV + 已知章節純文字丟強制對齊器(whisperX / Montreal Forced Aligner / CTC-based aligner)反推 char/word 級 timestamp。TTS 不吐字幕時的業界標準解法;產出同樣餵進 §2.1.1 的正規化路徑(對齊器多為 word 級 → 沿用「詞→字均分」)。代價:多一個對齊步驟 + 模型依賴 + 合成後處理延遲(預合成階段可吸收)。
+- **B. 內部請 voai/IQT 團隊加「字幕 / word-boundary 輸出」:** 使用者任職 IQT(`@iqt.ai`),voai.ai 即自家產品,可直接提需求。若團隊願加 boundary 輸出(如 Azure 的 `[n].word.json` 同構),則 IQT provider 退化成最單純的 map,連 forced alignment 都省。**此為最高槓桿的內部行動項。**
+- **C. 暫代/長期續用 Azure 當 timestamp 來源:** Azure 已驗證可吐詞級 boundary(§2.1)。可「IQT 出聲音 + Azure 出 timing」嗎?**不行** —— 兩家音檔時長不同,跨引擎 timing 不對齊;Azure 只能是「音源+timing 都用 Azure」的整包暫代。
+
+> 對 §1/§6 的影響:T1 的 gating 問題答案是「**IQT 不直接提供 → 走 forced alignment 或內部請團隊加**」,而非原先樂觀的「IQT 會吐字級」。T8 IQT provider 因此**多一個 forced-alignment 前置**(或等內部 boundary 輸出),不再是「純 map」。Azure 暫代路線(§2.1)不受影響,仍可獨立把整條管線跑通。
 
 ---
 
@@ -249,16 +270,16 @@ function activeCharIndex(chars: CharTimestamp[], currentMs: number): number {
 
 ## 6. 換源演進路徑（Azure → IQT，兌現「不重寫」）
 
-1. **現在（與 stage-0 平行）**：跑 [`spike-tts-iqt.ts`](../../../scripts/spike-tts-iqt.ts) 驗 IQT 能否吐字級 timestamp（T1, gating）。
-2. **過渡**：用 `azureProvider`（T3）把整條 pipeline + 高亮 + native 播放打通。此時產品已能聽書、能逐字高亮，只是音源是 Azure。
-3. **切換**：IQT spike 過關後，實作 `iqtProvider`（T8）——**只新增一個實作 `AudioSourceProvider` 的檔**，把 app 的 provider 從 `azureProvider` 換成 `iqtProvider`。player / 同步 / 高亮 / 快取 / schema **全部不動**。
+1. ~~**現在**:跑 `spike-tts-iqt.ts` 驗 IQT 能否吐字級 timestamp~~ **✅ 已驗(2026-06-16):voai.ai 不吐任何 timestamp(§2.2)。** → IQT 路線需 forced alignment 或內部請團隊加 boundary 輸出。
+2. **過渡(現階段主路)**:用 `azureProvider`(T3)把整條 pipeline + 高亮 + native 播放打通。此時產品已能聽書、能逐字高亮,音源是 Azure(目前唯一已驗證可逐字高亮者)。
+3. **切換**:待 IQT timing 來源就緒(forced alignment 接好 **或** voai 團隊加了 boundary 輸出)後,實作 `iqtProvider`(T8)——仍是**只新增一個實作 `AudioSourceProvider` 的檔**;player / 同步 / 高亮 / 快取 / schema **全部不動**,差別在 provider 內部多一步對齊。
 4. **驗證換源無回歸**：同一章用兩個 provider 各合成一次，比對 `ChapterAudio` 形狀一致、高亮在實機表現一致。
 
 ---
 
 ## 7. DoD（階段 3 完成定義）
 
-- [ ] **T1**：`npm run spike:tts:iqt` 在填好 endpoint/auth 後**真跑**，印出 IQT 回傳結構，且**確認為 char-level**（中文每漢字一筆、startMs 對齊音檔）。若非字級 → 升級為阻斷議題回報 IQT 團隊。
+- [x] **T1**:`npm run spike:tts:iqt` 已**真跑**(voai.ai)。結論:**回應僅 audio/wav、無任何 timestamp(§2.2)**。後續 timing 來源 = forced alignment 或內部請 voai 團隊加 boundary 輸出(已升級為內部行動項)。
 - [ ] `AudioSourceProvider` 抽象 + `ChapterAudio` 形狀定稿，Azure / IQT / Eleven 三 provider 輸出同一形狀。
 - [ ] Azure provider 能 per-chapter 合成出 audio + timestamp JSON（schema §3），`includesPunctuation` 與渲染約定一致。
 - [ ] 音檔快取：同章重播不重合成；改內文（`textHash` 變）自動重合成；換音色 / 換源不撞快取。
@@ -272,7 +293,7 @@ function activeCharIndex(chars: CharTimestamp[], currentMs: number): number {
 
 | 雷 | 症狀 | 對策 |
 |----|------|------|
-| ⚠️ IQT 吐不出字級 timestamp | 逐字卡拉OK核心賣點不存在 | T1 現在就驗（gating）；備選 ElevenLabs（原生 per-char） |
+| ✅ IQT 吐不出字級 timestamp（**2026-06-16 已實測成真,§2.2**） | 逐字卡拉OK不能直接靠 IQT 驅動 | 已驗:voai 只回音檔。對策=forced alignment(IQT 音檔+原文)或內部請 voai 加 boundary;Azure 暫代仍可逐字高亮;備選 ElevenLabs(原生 per-char) |
 | ⚠️ native plugin 缺 `MPRemoteCommandCenter` | 鎖屏只能看不能控 | 見 spike-native-plugin §3：退路是自寫 thin plugin 直接接 |
 | ⚠️ charIndex 與渲染錯位 | 高亮跳到錯字 | §3.2：provider 與渲染共用同一 `includesPunctuation` 約定 + `data-ci` |
 | ⚠️ **Azure 詞級非字級**（已實測 §2.1） | 2-char 詞只給一個 boundary，整詞同時高亮 | provider 正規化時依字數**均分詞內時間**切到字級（誤差 ~100ms/字，可接受） |
