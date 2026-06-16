@@ -1,8 +1,8 @@
 # 04 — 階段 3：TTS 聽書 pipeline（執行文件）
 
-**日期**：2026-06-15
-**對應**：階段 3（TTS 卡拉OK聽書）；[`mvp-stage0-plan.md` §8.5](./mvp-stage0-plan.md)、[`spike-native-plugin.md`](./spike-native-plugin.md)、[`evidence-ios-pwa-background-audio.md`](./evidence-ios-pwa-background-audio.md)
-**前置**：stage-0（[01](./01-foundation-and-data-layer.md)/[02](./02-fetch-and-api-layer.md)/[03](./03-pages-and-reader-ux.md)）閱讀器可用；**IQT char-level timestamp spike 結果**（[`scripts/spike-tts-iqt.ts`](../scripts/spike-tts-iqt.ts)）
+**日期**：2026-06-15（2026-06-16 補 Azure 真打實測結論，見 §2.1）
+**對應**：階段 3（TTS 卡拉OK聽書）；[`mvp-stage0-plan.md` §8.5](./mvp-stage0-plan.md)、[`spike-native-plugin.md`](../assessments/spike-native-plugin.md)、[`evidence-ios-pwa-background-audio.md`](./evidence-ios-pwa-background-audio.md)
+**前置**：stage-0（[01](./01-foundation-and-data-layer.md)/[02](./02-fetch-and-api-layer.md)/[03](./03-pages-and-reader-ux.md)）閱讀器可用；**IQT char-level timestamp spike 結果**（[`scripts/spike-tts-iqt.ts`](../../../scripts/spike-tts-iqt.ts)）
 **狀態**：📝 規劃中（只描述怎麼做，**尚未動程式碼**；本階段不碰 `db/`，僅盤點欄位需求）
 
 > 延續 01～03 的執行文件體例（任務分解 + DoD + 驗收）。本文件描述「聽書」如何在**不重寫 stage-0 web 閱讀器**的前提下長出來。
@@ -40,7 +40,7 @@
 | T3 | 實作 **Azure provider**（過渡暫代） | `azureProvider`（Batch synthesis → audio + word boundary JSON） | T2、`scripts/spike-tts-azure.ts` |
 | T4 | 設計 **timestamp JSON schema** + per-chapter 合成流程 | schema 草案（§3） | T2 |
 | T5 | 設計 **音檔快取策略**（per-chapter 預合成、落地、失效） | 快取規格（§4） | T3/T4 |
-| T6 | 選定 / 接上 **PlayerEngine（native plugin）** | 見 [`spike-native-plugin.md`](./spike-native-plugin.md) | native plugin 選型 |
+| T6 | 選定 / 接上 **PlayerEngine（native plugin）** | 見 [`spike-native-plugin.md`](../assessments/spike-native-plugin.md) | native plugin 選型 |
 | T7 | 實作 **逐字高亮同步器**（binary-search timing map + 變速換算） | 同步器（純 TS，可單測） | T4、T6 |
 | T8 | 接上 **IQT provider**（換源驗證：上層不動） | `iqtProvider` | T1、T2 |
 | T9 | DoD 驗收（§7） | 整條鏈路在實機綠燈 | T1–T8 |
@@ -85,9 +85,73 @@ interface AudioSourceProvider {
 }
 ```
 
-- **Azure provider（T3）**：走 **Batch synthesis** REST（長文離線合成），合成後下載 audio + `*.word.json` boundary 檔，把 word boundary 正規化成 `CharTimestamp[]`（中文每漢字一筆，`audioOffset_100ns / 10000 = startMs`）。見 [`scripts/spike-tts-azure.ts`](../scripts/spike-tts-azure.ts) 檔頭 `NOTE_ON_REST_WORD_BOUNDARY`。
-- **IQT provider（T8）**：對齊 [`scripts/spike-tts-iqt.ts`](../scripts/spike-tts-iqt.ts) 的 `parseResponse`，把 IQT 回傳 map 成同一個 `CharTimestamp[]`。**這一步只新增一個檔，上層零改動** —— 即「換源不重寫」的兌現點。
-- **ElevenLabs provider（備選）**：`with-timestamps` 的 `alignment.characters` 直接就是 per-char，map 最直接（見 [`scripts/spike-tts-eleven.ts`](../scripts/spike-tts-eleven.ts)）。
+- **Azure provider（T3）**：走 **Batch synthesis** REST（長文離線合成），合成後下載 audio + `*.word.json` boundary 檔，把 word boundary 正規化成 `CharTimestamp[]`。⚠️ **實測 Azure 對中文落「詞級」非字級**（見 §2.1），故正規化時須把多字詞 boundary **依字數均分時間切到字級**；`audioOffset_100ns / 10000 = startMs`。見 [`scripts/spike-tts-azure.ts`](../../../scripts/spike-tts-azure.ts)。
+- **IQT provider（T8）**：對齊 [`scripts/spike-tts-iqt.ts`](../../../scripts/spike-tts-iqt.ts) 的 `parseResponse`，把 IQT 回傳 map 成同一個 `CharTimestamp[]`。**這一步只新增一個檔，上層零改動** —— 即「換源不重寫」的兌現點。
+- **ElevenLabs provider（備選）**：`with-timestamps` 的 `alignment.characters` 直接就是 per-char，map 最直接（見 [`scripts/spike-tts-eleven.ts`](../../../scripts/spike-tts-eleven.ts)）。
+
+---
+
+## 2.1 Azure 真打實測結論（2026-06-16，T2a — 釘死字級未知數）
+
+`npm run spike:tts:azure` 用 Speech SDK 真打 `komaTTS`（region `japaneast`、voice `zh-CN-XiaoxiaoNeural`、文本「夜色漸深,他卻毫無睡意。」）。9 筆 `wordBoundary` 事件實測結果：
+
+| 判定項 | 實測 | 對卡拉OK高亮的影響 |
+|--------|------|------|
+| **粒度** | ❌ **詞級非純字級** —— 「夜色」「毫無」「睡意」各 `wordLength=2` 一筆，單字詞（漸/深/他/卻）才 `=1` | 不能直接當 char-level 用,**須在 provider 端把多字詞依字數均分時間切到字級** |
+| **每筆欄位** | ✅ `textOffset`(char index) + `wordLength`(char 數) + `audioOffset`(÷10000=ms) + `duration` | 有足夠資訊做均分:「夜色」50~450ms → 夜 50~250、色 250~450,誤差 ~100–175ms/字 |
+| **標點** | ✅ `,` `。` 標 `Punctuation` 型、不混進 Word | 渲染時略過,呼應 `includesPunctuation:false`（§3.2） |
+| **⚠️ offset 基準** | **`textOffset` 是相對整個 SSML 字串(含 `<speak><voice>` 前綴)**,首字「夜」落在 161 而非 0 | **管線雷**:production 要嘛改用 plain-text input（SDK `speakTextAsync`）讓 offset 從 0 起,要嘛減掉 SSML 前綴長度,否則 charIndex 全錯位 |
+
+**淨結論**:Azure 暫代音源**可支撐卡拉OK逐字高亮**——雖非純字級,但詞級 boundary 帶 char offset + duration,均分到字級的 fallback 已驗證可行,**不需為了字級換音源**。production 正解仍走 Batch synthesis 的 `[n].word.json`（欄位與 SDK `wordBoundary` 同構）。此結果讓 §1 的 `CharTimestamp[]` 形狀不變,只是 Azure provider 多一步「詞→字均分」正規化。
+
+> 對照 T1（IQT, gating）:若 IQT 能直接吐**純字級** timestamp,則 IQT provider 連均分都省;Azure 已先證明「就算只有詞級也做得出來」,降低了整個賣點的風險。
+
+### 2.1.1 詞→字均分正規化（可單測純函式）
+
+Azure provider 的核心轉換:把 raw `wordBoundary` 事件 → §2 的 `CharTimestamp[]`。三件事一次做完——**過濾標點 / 依字數均分時間 / 把 SSML-relative offset 正規化回純文字 index**。純函式、無副作用,可獨立單測(對齊 §5.1 `activeCharIndex` 的風格)。
+
+```ts
+// Azure SDK wordBoundary 事件的最小形狀(spike 實測欄位)
+interface AzureBoundary {
+  text: string;          // 該 boundary 文字,中文可能 1–2 字
+  textOffset: number;    // ⚠️ 相對整個 SSML 字串(含前綴),非純文字
+  wordLength: number;    // 涵蓋 char 數
+  startMs: number;       // audioOffset / 10000
+  durationMs: number;    // duration / 10000
+  type: "Word" | "Punctuation" | "Sentence";
+}
+
+/**
+ * 把 Azure 詞級 boundary 攤平成字級 CharTimestamp[]。
+ * @param offsetBase  SSML 前綴長度(用 speakTextAsync 純文字輸入時為 0;
+ *                    用 speakSsmlAsync 時 = ssmlPrefix.length,實測本 spike=161)
+ */
+function azureWordsToChars(
+  boundaries: readonly AzureBoundary[],
+  offsetBase: number,
+): CharTimestamp[] {
+  return boundaries
+    .filter((b) => b.type === "Word") // 標點/句界不參與高亮(includesPunctuation:false)
+    .flatMap((b) => {
+      const chars = [...b.text]; // code-point 切,避免 surrogate pair 出錯
+      const per = b.durationMs / chars.length; // 依字數均分(誤差 <~175ms/字)
+      return chars.map((c, k) => {
+        const start = b.startMs + per * k;
+        return {
+          char: c,
+          charIndex: b.textOffset - offsetBase + k, // 正規化回純文字 index
+          startMs: Math.round(start),
+          endMs: Math.round(start + per),
+        };
+      });
+    });
+  // boundaries 本就按 startMs 遞增 → 輸出已排序,可直餵 §5.1 binary search
+}
+```
+
+- **詞間停頓**:boundary 間的 gap(實測「深」止 988ms、「,」起 1088ms,中間 100ms 靜音)落在字與字之間的留白,不影響高亮——`activeCharIndex` 在 gap 期間停在前一字即可。若要更貼,可把本詞末字 `endMs` 補到「下一個 Word boundary 的 startMs」。
+- **offset 正規化是鐵則**:`offsetBase` 算錯 → 整章 `charIndex` 全平移錯位(§3.2)。最穩做法是 provider 改用 plain-text 輸入讓 `offsetBase=0`,徹底免去 SSML 前綴長度的脆弱依賴。
+- **未來相容**:IQT/Eleven 若原生 per-char(`wordLength=1`),此函式對它們是 no-op(每詞一字、均分=原值),等於免費複用同一條正規化路徑。
 
 ---
 
@@ -179,13 +243,13 @@ function activeCharIndex(chars: CharTimestamp[], currentMs: number): number {
 
 ### 5.3 與 PlayerEngine 的介面
 
-- 同步器只依賴 player 暴露的：`currentMs`（回拋 / 可查詢）、`rate`、`seekTo(ms)`、`onEnded`（跳章）。這組介面與 [`spike-native-plugin.md`](./spike-native-plugin.md) 的 `PlayerEngine` 待驗清單對齊；**換 plugin（現成↔自寫）只要這組介面不變,同步器不動**。
+- 同步器只依賴 player 暴露的：`currentMs`（回拋 / 可查詢）、`rate`、`seekTo(ms)`、`onEnded`（跳章）。這組介面與 [`spike-native-plugin.md`](../assessments/spike-native-plugin.md) 的 `PlayerEngine` 待驗清單對齊；**換 plugin（現成↔自寫）只要這組介面不變,同步器不動**。
 
 ---
 
 ## 6. 換源演進路徑（Azure → IQT，兌現「不重寫」）
 
-1. **現在（與 stage-0 平行）**：跑 [`spike-tts-iqt.ts`](../scripts/spike-tts-iqt.ts) 驗 IQT 能否吐字級 timestamp（T1, gating）。
+1. **現在（與 stage-0 平行）**：跑 [`spike-tts-iqt.ts`](../../../scripts/spike-tts-iqt.ts) 驗 IQT 能否吐字級 timestamp（T1, gating）。
 2. **過渡**：用 `azureProvider`（T3）把整條 pipeline + 高亮 + native 播放打通。此時產品已能聽書、能逐字高亮，只是音源是 Azure。
 3. **切換**：IQT spike 過關後，實作 `iqtProvider`（T8）——**只新增一個實作 `AudioSourceProvider` 的檔**，把 app 的 provider 從 `azureProvider` 換成 `iqtProvider`。player / 同步 / 高亮 / 快取 / schema **全部不動**。
 4. **驗證換源無回歸**：同一章用兩個 provider 各合成一次，比對 `ChapterAudio` 形狀一致、高亮在實機表現一致。
@@ -198,7 +262,7 @@ function activeCharIndex(chars: CharTimestamp[], currentMs: number): number {
 - [ ] `AudioSourceProvider` 抽象 + `ChapterAudio` 形狀定稿，Azure / IQT / Eleven 三 provider 輸出同一形狀。
 - [ ] Azure provider 能 per-chapter 合成出 audio + timestamp JSON（schema §3），`includesPunctuation` 與渲染約定一致。
 - [ ] 音檔快取：同章重播不重合成；改內文（`textHash` 變）自動重合成；換音色 / 換源不撞快取。
-- [ ] native plugin（[`spike-native-plugin.md`](./spike-native-plugin.md)）實機通過：**鎖屏控制（`MPRemoteCommandCenter`）**、背景 30 分鐘不斷音、自動跳章、變速、seek。
+- [ ] native plugin（[`spike-native-plugin.md`](../assessments/spike-native-plugin.md)）實機通過：**鎖屏控制（`MPRemoteCommandCenter`）**、背景 30 分鐘不斷音、自動跳章、變速、seek。
 - [ ] 逐字高亮：實機播放時高亮逐字跟拍；變速（0.5×–3×）下仍對齊；點字 seek 正確；`activeCharIndex` 有單元測試（沿用 testing 規範 80%）。
 - [ ] **換源驗證**：把 provider 從 Azure 換成 IQT，player / 同步 / 高亮 **零改動**，整條鏈路仍綠。
 
@@ -211,6 +275,8 @@ function activeCharIndex(chars: CharTimestamp[], currentMs: number): number {
 | ⚠️ IQT 吐不出字級 timestamp | 逐字卡拉OK核心賣點不存在 | T1 現在就驗（gating）；備選 ElevenLabs（原生 per-char） |
 | ⚠️ native plugin 缺 `MPRemoteCommandCenter` | 鎖屏只能看不能控 | 見 spike-native-plugin §3：退路是自寫 thin plugin 直接接 |
 | ⚠️ charIndex 與渲染錯位 | 高亮跳到錯字 | §3.2：provider 與渲染共用同一 `includesPunctuation` 約定 + `data-ci` |
+| ⚠️ **Azure 詞級非字級**（已實測 §2.1） | 2-char 詞只給一個 boundary，整詞同時高亮 | provider 正規化時依字數**均分詞內時間**切到字級（誤差 ~100ms/字，可接受） |
+| ⚠️ **Azure `textOffset` 為 SSML-relative**（已實測 §2.1） | 首字 offset=161 非 0，charIndex 全錯位 | 改用 plain-text input（`speakTextAsync`）讓 offset 從 0 起，或減掉 SSML 前綴長度 |
 | ⚠️ 中文一字 ~100ms 精度邊界 | 高亮卡頓 / 跟不上 | §5.1 rAF 內插補幀；player currentMs 回拋頻率列入 plugin 待驗 |
 | ⚠️ 變速後高亮漂移 | 2× 時高亮錯位 | §5.2：timestamp 存 1.0× ms，binary search 直接用 player currentMs |
 | ⚠️ 音檔塞爆裝置 | 儲存不足 | §4：LRU 淘汰 + 容量上限 + 按書清理 |
@@ -222,6 +288,6 @@ function activeCharIndex(chars: CharTimestamp[], currentMs: number): number {
 
 - **方向依據**：[`mvp-stage0-plan.md` §8.5](./mvp-stage0-plan.md)（Capacitor + native plugin、IQT 字級 timestamp 規格、spike 先行）
 - **背景播放查證**：[`evidence-ios-pwa-background-audio.md`](./evidence-ios-pwa-background-audio.md)
-- **plugin 選型**：[`spike-native-plugin.md`](./spike-native-plugin.md)
-- **spike scripts**：[`scripts/spike-tts-azure.ts`](../scripts/spike-tts-azure.ts)（暫代音源 + word boundary 規格）、[`scripts/spike-tts-iqt.ts`](../scripts/spike-tts-iqt.ts)（最高槓桿 gating）、[`scripts/spike-tts-eleven.ts`](../scripts/spike-tts-eleven.ts)（備選）
+- **plugin 選型**：[`spike-native-plugin.md`](../assessments/spike-native-plugin.md)
+- **spike scripts**：[`scripts/spike-tts-azure.ts`](../../../scripts/spike-tts-azure.ts)（暫代音源 + word boundary 規格）、[`scripts/spike-tts-iqt.ts`](../../../scripts/spike-tts-iqt.ts)（最高槓桿 gating）、[`scripts/spike-tts-eleven.ts`](../../../scripts/spike-tts-eleven.ts)（備選）
 - **stage-0 管線**：[02](./02-fetch-and-api-layer.md)（清洗純文字來源）、[03](./03-pages-and-reader-ux.md)（閱讀器渲染，逐字高亮掛在其上）
