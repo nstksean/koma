@@ -1,7 +1,7 @@
 # Spike — Capacitor native audio plugin 選型（聽書背景播放）
 
 **日期**：2026-06-15
-**對應**：階段 3（TTS 聽書）；[`mvp-stage0-plan.md` §8.5 修正 1](./mvp-stage0-plan.md)、[`evidence-ios-pwa-background-audio.md`](./evidence-ios-pwa-background-audio.md)
+**對應**：階段 3（TTS 聽書）；[`mvp-stage0-plan.md` §8.5 修正 1](../plans/mvp-stage0-plan.md)、[`evidence-ios-pwa-background-audio.md`](../plans/evidence-ios-pwa-background-audio.md)
 **狀態**：📝 選型調查（不進 app 實裝；本文件只做選型與待驗清單）
 
 > **一句話**：階段 3 走 **Capacitor + 底層 AVPlayer 的 native audio plugin**（重用整個 Next.js web 閱讀器），
@@ -58,14 +58,14 @@
 
 - `@capacitor-community/native-audio` 的設計初衷是**遊戲音效 / 短音**，不是長時間串流有聲書 —— 鎖屏控制與背景續播多半不齊，**先排除為主力**。
 - `@capgo/native-audio` 是 §8.5 點名首選，**背景播放與 rate 較完整**，但**鎖屏控制（`MPRemoteCommandCenter`）是缺證關鍵**，必須在實機 + 對應版本原始碼上確認，不能憑文件字面。
-- **最穩的退路**是「自寫 thin plugin」：AVQueuePlayer 接佇列自動跳章 + 顯式接 `MPRemoteCommandCenter` / `MPNowPlayingInfoCenter` / interruption。工作量是「一個 Swift plugin 檔」等級，且把最關鍵的鎖屏控制權握在自己手上。**逐字高亮所需的 currentTime 回拋頻率**（見 [`04` §逐字高亮同步](./04-stage3-tts-pipeline.md)）也由自寫層精準控制。
+- **最穩的退路**是「自寫 thin plugin」：AVQueuePlayer 接佇列自動跳章 + 顯式接 `MPRemoteCommandCenter` / `MPNowPlayingInfoCenter` / interruption。工作量是「一個 Swift plugin 檔」等級，且把最關鍵的鎖屏控制權握在自己手上。**逐字高亮所需的 currentTime 回拋頻率**（見 [`04` §逐字高亮同步](../plans/04-stage3-tts-pipeline.md)）也由自寫層精準控制。
 
 ---
 
 ## 3. 選型建議
 
 1. **第一順位：實機驗證 `@capgo/native-audio` 的 `MPRemoteCommandCenter`**。若該版本確實自接鎖屏 play/pause/next/prev + now-playing 資訊 + 背景續播 + rate，則**直接採用**，省下自寫成本。
-2. **退路（若第 1 項缺鎖屏控制）：自寫 thin Capacitor audio plugin**。用 `AVQueuePlayer` + 顯式接 `MPRemoteCommandCenter` / `MPNowPlayingInfoCenter` / `AVAudioSession(.playback)` / interruption。把這層做成乾淨的原生介面，對齊 [`04` §音源 Provider 抽象](./04-stage3-tts-pipeline.md) 的 `PlayerEngine` 契約。
+2. **退路（若第 1 項缺鎖屏控制）：自寫 thin Capacitor audio plugin**。用 `AVQueuePlayer` + 顯式接 `MPRemoteCommandCenter` / `MPNowPlayingInfoCenter` / `AVAudioSession(.playback)` / interruption。把這層做成乾淨的原生介面，對齊 [`04` §音源 Provider 抽象](../plans/04-stage3-tts-pipeline.md) 的 `PlayerEngine` 契約。
 3. **排除：`@capacitor-community/native-audio` 當主力**（SFX 取向）。
 4. **不選：RN + RNTP**（§8.5 已定，授權費 + 重寫成本）。
 
@@ -94,8 +94,8 @@
 
 - **方向確立**：Capacitor + native audio plugin，重用整個 web，不重寫、不上 RN。
 - **選型 gate**：`@capgo/native-audio` 是否自接 `MPRemoteCommandCenter` —— **本環境無法定論，標為實機待驗**；驗過則採用，否則走「自寫 thin plugin」退路（保證接得到鎖屏控制）。
-- **解耦保險**：對 web 暴露 `PlayerEngine` 抽象（見 [`04`](./04-stage3-tts-pipeline.md)），讓 plugin 可替換、選型結果不綁死下游。
+- **解耦保險**：對 web 暴露 `PlayerEngine` 抽象（見 [`04`](../plans/04-stage3-tts-pipeline.md)），讓 plugin 可替換、選型結果不綁死下游。
 
 ---
 
-**相關文件**：[`04-stage3-tts-pipeline.md`](./04-stage3-tts-pipeline.md)（pipeline 與 `PlayerEngine` / 音源 Provider 抽象）、[`evidence-ios-pwa-background-audio.md`](./evidence-ios-pwa-background-audio.md)（背景播放查證）、[`mvp-stage0-plan.md` §8.5](./mvp-stage0-plan.md)
+**相關文件**：[`04-stage3-tts-pipeline.md`](../plans/04-stage3-tts-pipeline.md)（pipeline 與 `PlayerEngine` / 音源 Provider 抽象）、[`evidence-ios-pwa-background-audio.md`](../plans/evidence-ios-pwa-background-audio.md)（背景播放查證）、[`mvp-stage0-plan.md` §8.5](../plans/mvp-stage0-plan.md)

@@ -2,7 +2,7 @@
 
 **日期**：2026-06-15
 **對應 stage-0 計畫**：Task 2（專案 scaffold）+ Task 4（Drizzle schema + migration）
-**前置**：Task 1 抓取 spike 已通過（見 [`scripts/spike-ttkan.ts`](../scripts/spike-ttkan.ts)、[mvp-stage0-plan.md](./mvp-stage0-plan.md)）
+**前置**：Task 1 抓取 spike 已通過（見 [`scripts/spike-ttkan.ts`](../../../scripts/spike-ttkan.ts)、[mvp-stage0-plan.md](./mvp-stage0-plan.md)）
 **狀態**：📝 規劃中（本文件只描述「怎麼做」，**尚未動程式碼**）
 
 > 這是三份執行文件的第一份：

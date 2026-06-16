@@ -7,11 +7,11 @@
  *      —— 目前是依「預期規格」寫的占位；拿到 API 文件後對齊欄位名即可。
  *   3) 確認 IQT 是否在合成時回傳 char-level timestamp（中文逐字）。這是 gating dependency：
  *      若 IQT 吐不出對齊音檔的 char-level timestamp，逐字卡拉OK這個核心賣點就不存在
- *      （見 docs/mvp-stage0-plan.md §8.5、docs/04-stage3-tts-pipeline.md）。
+ *      （見 docs/meta/plans/mvp-stage0-plan.md §8.5、docs/meta/plans/04-stage3-tts-pipeline.md）。
  *
  * 為什麼這支最重要：Azure/ElevenLabs 已證「字級 timestamp 技術可行」，但「自家 IQT 能否吐得出」
  *   仍是單一最高槓桿的未知數。過渡期用 Azure 暫代，最終要換成 IQT —— 換源只動「音源 provider」，
- *   不動 player/同步/高亮（介面切點見 docs/04 §「音源 Provider 抽象」）。本 spike 就是驗 IQT 那一端。
+ *   不動 player/同步/高亮（介面切點見 docs/meta/plans/04 §「音源 Provider 抽象」）。本 spike 就是驗 IQT 那一端。
  *
  * 跑法：  npm run spike:tts:iqt
  *   缺 env（IQT_TTS_ENDPOINT / IQT_TTS_KEY）時印友善提示、exit 0，不 crash。

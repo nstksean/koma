@@ -81,7 +81,7 @@ export interface SourceAdapter {
 
 ## 2. TtkanAdapter（`src/sources/ttkan.ts`）
 
-直接從 [`scripts/spike-ttkan.ts`](../scripts/spike-ttkan.ts) 收斂(spike 刻意做成 adapter 形狀,搬移成本低)。收斂時要做的事:
+直接從 [`scripts/spike-ttkan.ts`](../../../scripts/spike-ttkan.ts) 收斂(spike 刻意做成 adapter 形狀,搬移成本低)。收斂時要做的事:
 
 1. 把 `fetchHtml`、`slugFromChaptersHref`、selector 邏輯原樣搬入。
 2. 補 `getBook` 的 `latestChapterTitle`(spike 沒抓,schema 需要)——從目錄最後一章標題取。
@@ -325,7 +325,7 @@ tests/
 
 - Next.js 16 Route Handler 與 async `params`:[Upgrading: Version 16 | Next.js](https://nextjs.org/docs/app/guides/upgrading/version-16)
 - Drizzle upsert(`onConflictDoUpdate`)與 libSQL in-memory:[Drizzle with Turso](https://orm.drizzle.team/docs/tutorials/drizzle-with-turso)
-- Task 1 已驗證的 ttkan 結構與雜訊樣態:[mvp-stage0-plan.md §1](./mvp-stage0-plan.md)、[`scripts/spike-ttkan.ts`](../scripts/spike-ttkan.ts)
+- Task 1 已驗證的 ttkan 結構與雜訊樣態:[mvp-stage0-plan.md §1](./mvp-stage0-plan.md)、[`scripts/spike-ttkan.ts`](../../../scripts/spike-ttkan.ts)
 
 ---
 

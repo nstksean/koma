@@ -57,7 +57,7 @@ lib/          領域邏輯（books / library / progress / search / chapter-split
 src/sources/  書源 adapter（SourceAdapter 介面 + 各來源實作）
 db/           Drizzle schema + migration
 tests/        Vitest + Playwright
-docs/         產品方向與分階段實作計畫
+docs/         文件殿堂（Diátaxis + meta）；入口見 docs/README.md
 ```
 
 ## 狀態

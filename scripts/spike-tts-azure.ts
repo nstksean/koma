@@ -1,7 +1,7 @@
 /**
  * spike-tts-azure — Azure 雲端 TTS 中文「字級 timestamp」驗證（Speech SDK 版）。
  *
- * 背景（見 docs/mvp-stage0-plan.md §8.5、docs/04-stage3-tts-pipeline.md）：
+ * 背景（見 docs/meta/plans/mvp-stage0-plan.md §8.5、docs/meta/plans/04-stage3-tts-pipeline.md）：
  *   階段 3 聽書 = 預合成 audio file + char-level timestamp → native plugin 播 + 前端逐字高亮。
  *   過渡期先用 Azure 當「暫代音源」（之後換自家 IQT 只換音源、不重寫 player/同步/高亮）。
  *   核心賣點是逐字卡拉OK高亮，需要【字級】timestamp —— 中文無空格，必須確認 Azure 的

@@ -2,7 +2,7 @@
 
 **日期**：2026-06-15
 **目標**：最小可用的「零廣告純文字小說閱讀器」，驗證抓取流程 + 核心閱讀體驗
-**前置**：見 [competitive-analysis.md](./competitive-analysis.md)、[experiment-log.md](./experiment-log.md)
+**前置**：見 [competitive-analysis.md](../assessments/competitive-analysis.md)、[experiment-log.md](../assessments/experiment-log.md)
 **技術棧**：Next.js 16 (App Router) + React 19 + Tailwind 4 + shadcn/ui + Drizzle + Turso (libSQL)
 
 > ✅ **查證註記（2026-06-15，經 `/verify-findings` 雙 agent 交叉驗證 + 親自跑 spike）**：本 stage-0 的 **Next.js-first 方向地基已驗證為穩固** —— `scripts/spike-ttkan.ts` 親自跑通（搜尋 90 命中 → 書頁 → 45 章 → 內文 27 段乾淨），ttkan 採用決策成立。另案（RN/Expo 原生 first）的兩個前提已被削弱並由本方向取代（RNTP V5 商用授權 €999~2,499/年；Capacitor+native plugin 可重用整個 web 不必重寫）。理由與併入的 3 點修正見文末「查證後的方向修正」。完整查證表存於 `~/.claude/plans/tts-pwa-adaptive-dolphin.md`。
@@ -47,7 +47,7 @@
 - 內文：`GET /novel/pagea/{slug}_{n}.html` → `div.content`（結束於 `#div_content_end`）
 - ⚠️ Task 3 待清洗的雜訊：章節標題 `正文_` 前綴、內文尾端 `章節報錯 分享給朋友：`。
 
-> 實作見 [`scripts/spike-ttkan.ts`](../scripts/spike-ttkan.ts)（已做成 `SourceAdapter` 形狀，可直接收斂進 Task 3）。
+> 實作見 [`scripts/spike-ttkan.ts`](../../../scripts/spike-ttkan.ts)（已做成 `SourceAdapter` 形狀，可直接收斂進 Task 3）。
 
 ---
 

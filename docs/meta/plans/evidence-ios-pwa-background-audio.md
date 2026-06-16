@@ -4,7 +4,7 @@
 **方法**：`/evidence-check` 四維度並行調查(學術 / 業界標準 / 最佳實踐 / 社群+反面)
 **緣由**：釐清兩份計畫文件何者適合當「第一步方案」
 - 方案 A：`~/.claude/plans/tts-pwa-adaptive-dolphin.md`(TTS 卡拉OK有聲書產品,RN/原生)
-- 方案 B：`docs/mvp-stage0-plan.md`(Next.js Web 零廣告閱讀器,已動工)
+- 方案 B：`docs/meta/plans/mvp-stage0-plan.md`(Next.js Web 零廣告閱讀器,已動工)
 
 > ⚠️ **建議段已部分取代(2026-06-15,同日 `/verify-findings` 查證後)**
 > 本文的 **Verdict(iOS web/PWA 無法可靠做有聲書式背景播放)仍然有效、且已被查證確認**(plan 查證表 C2 CONFIRMED)。

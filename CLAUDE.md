@@ -3,7 +3,7 @@
 中文小說閱讀器(iOS 優先 + Web)。技術棧:Next.js 16 + React 19 + Tailwind v4 + shadcn + Drizzle + Turso。
 
 ## Design System
-Always read [DESIGN.md](./DESIGN.md) before making any visual or UI decisions.
+Always read [DESIGN.md](./docs/design/DESIGN.md) before making any visual or UI decisions.
 All font choices, colors, spacing, themes, and aesthetic direction are defined there.
 Do not deviate without explicit user approval.
 In QA mode, flag any code that doesn't match DESIGN.md.
