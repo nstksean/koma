@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { BookOpen, ChevronRight, Search, Upload } from "lucide-react";
 import { getContinueReading, listLibrary } from "@/lib/library";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { KomaCat } from "@/components/brand/koma-cat";
 import { buttonVariants } from "@/components/ui/button";
 
 async function searchAction(formData: FormData) {
@@ -18,7 +19,10 @@ export default async function HomePage() {
     <main className="mx-auto max-w-2xl px-4 py-8">
       <header className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">🐈 Koma</h1>
+          <h1 className="flex items-center gap-2 font-display text-3xl font-semibold tracking-tight">
+            <KomaCat size={38} className="-mb-1 text-brand" />
+            Koma
+          </h1>
           <p className="text-sm text-muted-foreground">零廣告 · 乾淨 · 中文小說閱讀器</p>
         </div>
         <ThemeToggle />
@@ -63,7 +67,7 @@ export default async function HomePage() {
         </div>
         {items.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border py-12 text-center text-muted-foreground">
-            <BookOpen className="mx-auto mb-2 size-8 opacity-50" />
+            <KomaCat size={104} className="mx-auto mb-3 text-brand/70" />
             <p>書架是空的。搜尋一本書，加入書架後就會出現在這裡。</p>
           </div>
         ) : (

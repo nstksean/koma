@@ -3,6 +3,7 @@ import { ArrowLeft, BookOpen } from "lucide-react";
 import { searchBooks } from "@/lib/search";
 import { DEFAULT_SOURCE, type SearchResult } from "@/src/sources";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { KomaCat } from "@/components/brand/koma-cat";
 import { buttonVariants } from "@/components/ui/button";
 
 export default async function SearchPage({
@@ -71,13 +72,17 @@ export default async function SearchPage({
       </ul>
 
       {keyword && !error && results.length === 0 && (
-        <p className="py-12 text-center text-muted-foreground">查無結果，換個關鍵字試試。</p>
+        <div className="py-12 text-center text-muted-foreground">
+          <KomaCat size={96} className="mx-auto mb-3 text-brand/70" />
+          <p>查無結果，換個關鍵字試試。</p>
+        </div>
       )}
 
       {!keyword && (
-        <p className="py-12 text-center text-muted-foreground">
-          輸入關鍵字開始搜尋（來源：{DEFAULT_SOURCE}）。
-        </p>
+        <div className="py-12 text-center text-muted-foreground">
+          <KomaCat size={96} className="mx-auto mb-3 text-brand/70" />
+          <p>輸入關鍵字開始搜尋（來源：{DEFAULT_SOURCE}）。</p>
+        </div>
       )}
     </main>
   );

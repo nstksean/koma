@@ -1,3 +1,5 @@
+import { KomaCat } from "@/components/brand/koma-cat";
+
 /**
  * 搜尋頁的 loading skeleton。
  * server action 觸發 SearchPage 重新渲染（await searchBooks）時撐住等待感，
@@ -31,7 +33,11 @@ export default function SearchLoading() {
         ))}
       </ul>
 
-      <span className="sr-only">搜尋中…</span>
+      {/* 載入時的品牌貓(DESIGN:載入是貓的出現點之一);呼吸動畫帶出陪伴感。 */}
+      <div className="mt-10 flex flex-col items-center gap-2 text-sm text-muted-foreground">
+        <KomaCat size={72} breathing className="text-brand/60" />
+        <span>貓正在翻書…</span>
+      </div>
     </main>
   );
 }

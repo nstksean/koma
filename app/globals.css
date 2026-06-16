@@ -3,6 +3,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * 主題真理在 DESIGN.md。這裡把 DESIGN 的語意色票
+ * (--bg / --surface / --ink / --accent…)映射到 shadcn 慣用的語意變數
+ * (--background / --primary / --muted-foreground…),全站元件即自動套用。
+ * 三主題各一個 class(next-themes 以 attribute="class" 掛到 <html>)。
+ */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -22,53 +28,100 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+
+  /* DESIGN 品牌色:主色與次要點綴,給品牌貓 / 進度等重點用(避免與 shadcn --accent 撞名)。 */
+  --color-brand: var(--brand);
+  --color-brand-2: var(--brand-2);
+
+  /* DESIGN radius 階梯:sm 6 / md 12 / lg 20 / full 999。 */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-full: 999px;
+
+  /* 字體:next/font 於 layout 注入 CSS 變數;此處組成 fallback 鏈。 */
+  --font-sans: var(--font-source-sans), var(--font-noto-sans-tc), ui-sans-serif,
+    system-ui, "PingFang TC", "Microsoft JhengHei", sans-serif;
+  --font-serif: var(--font-noto-serif-tc), ui-serif, "Songti TC", "Noto Serif CJK TC",
+    serif;
+  --font-display: var(--font-fraunces), var(--font-source-sans), ui-serif, serif;
 }
 
-:root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+/* ── 1. Cat-Eye Dusk 貓眼 ★ DEFAULT(dark)── 也作為 :root fallback */
+:root,
+.cat-eye-dusk {
+  color-scheme: dark;
+  --background: #151a19;
+  --foreground: #e7eae4;
+  --card: #1d2422;
+  --card-foreground: #e7eae4;
+  --popover: #1d2422;
+  --popover-foreground: #e7eae4;
+  --primary: #7fbba2;
+  --primary-foreground: #10211b;
+  --secondary: #243029;
+  --secondary-foreground: #e7eae4;
+  --muted: #243029;
+  --muted-foreground: #8b968e;
+  --accent: #243029;
+  --accent-foreground: #e7eae4;
+  --destructive: #d2654a;
+  --border: #2a332f;
+  --input: #2a332f;
+  --ring: #7fbba2;
+  --brand: #7fbba2;
+  --brand-2: #e7ac5e;
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+/* ── 2. Ember Night 暖夜(dark)── */
+.ember-night {
+  color-scheme: dark;
+  --background: #17140f;
+  --foreground: #ece4d5;
+  --card: #221d16;
+  --card-foreground: #ece4d5;
+  --popover: #221d16;
+  --popover-foreground: #ece4d5;
+  --primary: #e7ac5e;
+  --primary-foreground: #1a140c;
+  --secondary: #2a241d;
+  --secondary-foreground: #ece4d5;
+  --muted: #2a241d;
+  --muted-foreground: #9c9180;
+  --accent: #2a241d;
+  --accent-foreground: #ece4d5;
+  --destructive: #d2654a;
+  --border: #342d23;
+  --input: #342d23;
+  --ring: #e7ac5e;
+  --brand: #e7ac5e;
+  --brand-2: #6fa893;
+}
+
+/* ── 3. Clean Paper 淨紙(light)── */
+.clean-paper {
+  color-scheme: light;
+  --background: #faf8f3;
+  --foreground: #1b1813;
+  --card: #ffffff;
+  --card-foreground: #1b1813;
+  --popover: #ffffff;
+  --popover-foreground: #1b1813;
+  --primary: #c2762b;
+  --primary-foreground: #ffffff;
+  --secondary: #f4ecdb;
+  --secondary-foreground: #1b1813;
+  --muted: #f4ecdb;
+  --muted-foreground: #8c8578;
+  --accent: #f4ecdb;
+  --accent-foreground: #1b1813;
+  --destructive: #b4472c;
+  --border: #ece6d9;
+  --input: #ece6d9;
+  --ring: #c2762b;
+  --brand: #c2762b;
+  --brand-2: #5e8b7e;
 }
 
 @layer base {
@@ -76,12 +129,40 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
+  }
+  /* 主題切換 ~400ms 漸變(DESIGN Motion);尊重減量動態偏好。 */
+  @media (prefers-reduced-motion: no-preference) {
+    body {
+      transition: background-color 400ms ease-in-out, color 400ms ease-in-out;
+    }
   }
 }
 
-/* 閱讀器：字級 / 行距由 CSS 變數驅動（Task 7 設定面板會改這兩個值）。 */
+/* 閱讀器:字級 / 行距由 CSS 變數驅動(設定面板會改這兩個值)。 */
 .reader-content {
-  font-size: var(--reader-font-size, 1.125rem);
-  line-height: var(--reader-line-height, 1.9);
+  font-size: var(--reader-font-size, 1.25rem);
+  line-height: var(--reader-line-height, 1.95);
+}
+
+/* 品牌貓「睡著」的輕微呼吸(DESIGN Motion:章末貓蜷起睡著)。克制、緩慢。 */
+@keyframes koma-cat-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.045);
+    opacity: 1;
+  }
+}
+.koma-cat-breathe {
+  transform-origin: center;
+  animation: koma-cat-breathe 3.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .koma-cat-breathe {
+    animation: none;
+  }
 }

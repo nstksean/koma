@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ChapterDrawer } from "@/components/reader/chapter-drawer";
+import { KomaCat } from "@/components/brand/koma-cat";
 import { saveProgressAction } from "@/app/actions";
 import { cn } from "@/lib/utils";
 
@@ -43,9 +44,9 @@ interface ReaderSettings {
 
 const SETTINGS_KEY = "koma:reader";
 const DEFAULT_SETTINGS: ReaderSettings = {
-  fontSize: 1.125,
-  lineHeight: 1.9,
-  fontFamily: "serif",
+  fontSize: 1.25, // DESIGN 預設 20px(中)
+  lineHeight: 1.95, // DESIGN 行距 1.95
+  fontFamily: "sans", // DESIGN:黑體為主,明體為可選非預設
 };
 const FONT_MIN = 0.875;
 const FONT_MAX = 1.75;
@@ -227,18 +228,18 @@ export function ReaderView({
             <span className="text-muted-foreground">字型</span>
             <div className="flex gap-2">
               <Button
-                variant={settings.fontFamily === "serif" ? "secondary" : "outline"}
-                size="sm"
-                onClick={() => setSettings((s) => ({ ...s, fontFamily: "serif" }))}
-              >
-                明體
-              </Button>
-              <Button
                 variant={settings.fontFamily === "sans" ? "secondary" : "outline"}
                 size="sm"
                 onClick={() => setSettings((s) => ({ ...s, fontFamily: "sans" }))}
               >
                 黑體
+              </Button>
+              <Button
+                variant={settings.fontFamily === "serif" ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => setSettings((s) => ({ ...s, fontFamily: "serif" }))}
+              >
+                明體
               </Button>
             </div>
           </div>
@@ -265,6 +266,14 @@ export function ReaderView({
           </p>
         ))}
       </article>
+
+      {/* 章末:貓蜷起睡著(DESIGN Motion §104)。每章結尾的休止符,克制出現一次。 */}
+      <div className="mx-auto flex max-w-2xl flex-col items-center gap-2 px-5 pt-2 pb-8 text-sm text-muted-foreground">
+        <KomaCat size={88} breathing label="貓睡著了" className="text-brand/70" />
+        <span>
+          {nextIdx === null ? "貓睡著了 · 全書到這裡" : "貓睡著了 · 本章結束"}
+        </span>
+      </div>
 
       {/* 上下章 */}
       <nav className="mx-auto flex max-w-2xl items-center justify-between gap-3 px-5 pb-16">
