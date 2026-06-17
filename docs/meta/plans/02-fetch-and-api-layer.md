@@ -3,7 +3,7 @@
 **日期**:2026-06-15
 **對應 stage-0 計畫**:Task 3(SourceAdapter 介面 + TtkanAdapter)+ Task 5(API 層 Route Handlers + 快取)
 **前置**:**[01-foundation-and-data-layer.md](./01-foundation-and-data-layer.md) 全綠**(Next 16 起得來、四張表已 migrate)
-**狀態**:📝 規劃中(只描述怎麼做,**尚未動程式碼**)
+**狀態**:**✅ 已完成**(commit `276af08`)。Task 3 `SourceAdapter`+`TtkanAdapter`(`src/sources/`)+ Task 5 資料服務層+快取皆已落地。**與計畫偏差**:原計畫的「API Route Handlers(`/api/*`)」實作上改走 **Server Actions + `lib/` service 層**(`lib/books|library|progress|search`,單機 MVP 更精簡,**無 `app/api/`**);故下文 `curl /api/search` 等範例對應 server action / 直接呼叫 `lib/search`。
 
 > 三份執行文件的第二份。02 的產出是「**一條穩定、被快取、可測試的資料管線**」:
 > 上層(03 的頁面)只跟 `/api/*` 與 server actions 對話,完全不知道底下是 ttkan、cheerio,還是 DB 快取。

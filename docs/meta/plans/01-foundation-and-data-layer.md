@@ -3,7 +3,7 @@
 **日期**：2026-06-15
 **對應 stage-0 計畫**：Task 2（專案 scaffold）+ Task 4（Drizzle schema + migration）
 **前置**：Task 1 抓取 spike 已通過（見 [`scripts/spike-ttkan.ts`](../../../scripts/spike-ttkan.ts)、[mvp-stage0-plan.md](./mvp-stage0-plan.md)）
-**狀態**：📝 規劃中（本文件只描述「怎麼做」，**尚未動程式碼**）
+**狀態**：**✅ 已完成**（commit `276af08` initial commit）。Task 2 scaffold + Task 4 Drizzle schema/migration（`0000_*.sql`）皆已落地，四張表就緒。**與計畫偏差**：本文件原述「還不是 git repo」，現已 `git init` 並推上遠端（`origin = git@github.com:nstksean/koma.git`）。
 
 > 這是三份執行文件的第一份：
 > - **01（本文件）**：把空目錄變成「能跑、能連 DB、schema 已 migrate」的地基。

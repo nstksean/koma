@@ -3,7 +3,7 @@
 **日期**:2026-06-15
 **對應 stage-0 計畫**:Task 6(頁面)+ Task 7(閱讀器體驗)+ Task 8(DoD 驗收)
 **前置**:**[01](./01-foundation-and-data-layer.md) 與 [02](./02-fetch-and-api-layer.md) 全綠**(地基 + 資料管線就緒)
-**狀態**:📝 規劃中(只描述怎麼做,**尚未動程式碼**)
+**狀態**:**✅ 已完成**(commit `276af08` 起;書封+搜尋 skeleton `1fcfdda`、import/search 測試 `bf3f408`)。Task 6 頁面 + Task 7 閱讀器體驗 + Task 8 DoD 驗收皆達成,2 條 E2E 綠。**與計畫偏差**:首發來源是 **ttkan** 非 czbooks(czbooks 被 Cloudflare 擋,見 mvp §1);字級採連續 slider(`FONT_MIN/MAX`,預設 20px),超出 DoD「至少 3 段」要求。
 
 > 三份執行文件的最後一份。03 把 02 的資料管線接成**使用者真的能用的 App**,並完成 stage-0 的 Definition of Done。
 > 本文件結束時應達成:搜尋「斗破蒼穹」→ 進書頁 → 開第一章讀到乾淨內文 → 關掉再開回到上次位置 → 日夜/字體可切 → 書架有續讀入口,且 1 條 E2E 綠燈。

@@ -77,8 +77,8 @@
 ```typescript
 // 所有回傳皆為 immutable plain object（遵守 coding-style：不可變）
 export interface SourceAdapter {
-  readonly id: string;            // "czbooks"
-  readonly name: string;          // "小說狂人"
+  readonly id: string;            // "ttkan"（MVP 首發；實作見 src/sources/）
+  readonly name: string;          // "天天看小說"
   readonly baseUrl: string;
 
   search(keyword: string): Promise<SearchResult[]>;
@@ -149,7 +149,7 @@ progress: { id, userId, bookId(FK), chapterId(FK),
 
 ## 6. 測試策略（符合 TDD / 80% 門檻）
 
-- **Adapter 解析是 TDD 的最佳接縫**：把 spike 抓到的 HTML 存成 fixture（`tests/fixtures/czbooks/*.html`），對 fixture 寫 selector 解析的單元測試 → 先紅再綠。來源站改版時測試會立刻爆，等於回歸保護。
+- **Adapter 解析是 TDD 的最佳接縫**：把 spike 抓到的 HTML 存成 fixture（實作落於 `tests/fixtures/ttkan/*.html`），對 fixture 寫 selector 解析的單元測試 → 先紅再綠。來源站改版時測試會立刻爆，等於回歸保護。
 - **API 層**：mock adapter，測快取命中/未命中、TTL 過期重抓。
 - **E2E（Playwright）**：搜尋「斗破蒼穹」→ 進書頁 → 開第一章 → 確認內文出現、無廣告、進度有記住。
 
@@ -157,7 +157,7 @@ progress: { id, userId, bookId(FK), chapterId(FK),
 
 ## 7. 完成定義（Definition of Done）
 
-- ✅ 在 czbooks 搜尋關鍵字，能列出書、進書頁看到完整章節目錄。
+- ✅ 在 ttkan（首發來源，czbooks 被 Cloudflare 擋故翻盤，見 §1）搜尋關鍵字，能列出書、進書頁看到完整章節目錄。
 - ✅ 點章節能讀到**乾淨內文**（已清洗來源站的廣告/導流字樣），零廣告。
 - ✅ 關掉再開，自動回到上次讀的章節與位置。
 - ✅ 日夜模式 + 至少 3 段字體大小可切換。
