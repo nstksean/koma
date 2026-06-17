@@ -168,11 +168,36 @@ function azureWordsToChars(
 
 **淨結論(推翻先前假設):** 先前計畫假設「最終換成 IQT,IQT 會吐(理想是純字級)timestamp,Azure 只是暫代」。**實測證明 IQT 這端的 timestamp 並不存在** —— `AudioSourceProvider` 換源切點仍成立,但 **IQT provider 拿不到現成 timestamp**,逐字 timing 必須另尋來源。前進路線(擇一,非互斥):
 
-- **A. Forced alignment(技術自主解,推薦主路):** 把 IQT 合成的 WAV + 已知章節純文字丟強制對齊器(whisperX / Montreal Forced Aligner / CTC-based aligner)反推 char/word 級 timestamp。TTS 不吐字幕時的業界標準解法;產出同樣餵進 §2.1.1 的正規化路徑(對齊器多為 word 級 → 沿用「詞→字均分」)。代價:多一個對齊步驟 + 模型依賴 + 合成後處理延遲(預合成階段可吸收)。
+- **A. Forced alignment(技術自主解,推薦主路)— ✅ 2026-06-17 真打驗證通過,見 §2.2.1。** 把 IQT 合成的 WAV + 已知章節純文字丟強制對齊器反推 timestamp,TTS 不吐字幕時的業界標準解法。**實測選定 `torchaudio.forced_align` + 中文 CTC 模型(字典即漢字 → 直接字級,不需詞→字均分)**,對 voai 真實音檔兩句皆完美對齊(逗號停頓正確偵測)。代價:多一個對齊步驟 + 模型依賴(本地、~1.3GB、CPU 即可),可在預合成階段吸收。
 - **B. 內部請 voai/IQT 團隊加「字幕 / word-boundary 輸出」:** 使用者任職 IQT(`@iqt.ai`),voai.ai 即自家產品,可直接提需求。若團隊願加 boundary 輸出(如 Azure 的 `[n].word.json` 同構),則 IQT provider 退化成最單純的 map,連 forced alignment 都省。**此為最高槓桿的內部行動項。**
 - **C. 暫代/長期續用 Azure 當 timestamp 來源:** Azure 已驗證可吐詞級 boundary(§2.1)。可「IQT 出聲音 + Azure 出 timing」嗎?**不行** —— 兩家音檔時長不同,跨引擎 timing 不對齊;Azure 只能是「音源+timing 都用 Azure」的整包暫代。
 
 > 對 §1/§6 的影響:T1 的 gating 問題答案是「**IQT 不直接提供 → 走 forced alignment 或內部請團隊加**」,而非原先樂觀的「IQT 會吐字級」。T8 IQT provider 因此**多一個 forced-alignment 前置**(或等內部 boundary 輸出),不再是「純 map」。Azure 暫代路線(§2.1)不受影響,仍可獨立把整條管線跑通。
+
+---
+
+## 2.2.1 Forced alignment POC 真打結論（2026-06-17，路線 A 已驗證 ✅）
+
+> Status: **✅ 路線 A(forced alignment)真打通過 —— 不靠任何 TTS 字幕輸出,即可在本地反推漢字字級 timestamp。** 這把 §2.2「voai 不吐 timestamp」的缺口補上了一條**完全自主、零 API 成本、無商用授權限制**的 timing 來源,逐字卡拉OK核心賣點的可行性確認。
+
+**方案(research-and-reuse 選定):** `torchaudio.functional.forced_align` + HuggingFace 中文 CTC 模型 [`jonatasgrosman/wav2vec2-large-xlsr-53-chinese-zh-cn`](https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-chinese-zh-cn)(Apache 系授權)。**關鍵點:此模型的 CTC 字典本身就是漢字**(非 pinyin / BPE / phoneme),故對齊輸出天生是字級,**第 i 段 = 原文第 i 個漢字,零映射**。淘汰 whisperX(PyPI 要 Python ≥3.10,本機 3.9 裝不了)、ctc-forced-aligner(需編 C++、預設模型 CC-BY-NC 商用禁用)、MMS_FA(輸出拉丁需 pinyin↔漢字反推,易對歪)、MFA(需 conda)。
+
+**實作:** [`scripts/forced-align-poc.py`](../../../scripts/forced-align-poc.py)(Python,POC 專用,不進 `package.json`)。輸入 = TTS 合成 WAV + 已知逐字原文;輸出 = 每漢字 `{ char, charIndex, startMs, endMs, score }`。繁體先以 `opencc t2s` 轉簡體「只供對齊」(模型字典為簡體),時間戳貼回原文(繁簡 1:1 不錯位);標點/空白不對齊(音檔無發音)。CTC onset 尖峰 → 卡拉OK連續區間:第 i 字 active 於 `[onset_i, onset_{i+1})`,末字延伸到音檔尾。
+
+**環境:** macOS arm64 / Python 3.9.6 / CPU。`python3 -m venv .venv-align` + `pip install torch==2.2.2 torchaudio==2.2.2 transformers==4.41.2 opencc-python-reimplemented==0.1.7 numpy<2 soundfile`。鎖 torch/torchaudio **2.2.2**(py39+arm64 末版,且 `forced_align` 在 torchaudio 2.9 將移除);`numpy<2`(torch 2.2.2 編譯於 numpy 1.x);`soundfile` 補 torchaudio 音檔 backend。模型首跑下載約 1.3GB(之後快取)。
+
+**真打結果(音源 = voai.ai 合成 WAV,即最終目標引擎):**
+
+| 樣本 | 字數 | 音長 | `<unk>` | 單調遞增 | 每字時長 min/avg/max | 停頓偵測 |
+|---|---|---|---|---|---|---|
+| 「夜色漸深,他卻毫無睡意。」 | 10 | 2.98s | 0 | ✅ | 161 / 274 / 584 ms | 逗號前「深」span 584ms ✅ |
+| 「她輕輕推開門,屋裡一片漆黑,只有窗外的月光灑在地板上。」 | 24 | 6.29s | 0 | ✅ | 100 / 254 / 661 ms | 兩逗號前「門」641ms、「黑」661ms 皆為最長 span ✅ |
+
+**正確性鐵證:** 兩句的逗號停頓都被對齊器抓成「該停頓前一字的最長 span」(非巧合 —— 停頓落點與原文標點位置完全吻合),且疊字「輕輕」正確切成兩段。frame 解析度約 20ms,優於目標 ~100ms/字。
+
+**接管線(§2.1.1 / §3):** 對齊器輸出已是漢字級,故 §2.1.1 的「詞→字均分」**對 IQT-via-alignment 路線可略過**(均分只在用 Azure 詞級 boundary 時需要);輸出形狀與 §3 `CharTimestamp` 同構(`charIndex` 對齊渲染 `data-ci`)。idx-span 吸收停頓的行為,production 可選做「以能量/VAD 修剪 span 尾段靜音」的小優化,POC 不需。
+
+**對 T8 的更新:** IQT provider 的 forced-alignment 前置**已驗證可行**,不再是未知數;剩下的是工程化(把 POC 腳本包成預合成階段的一步:WAV+章節純文字 → char timestamps JSON → 寫快取)。路線 B(內部請 voai 加 boundary)若實現可讓此步退化省略,兩者非互斥。
 
 ---
 
