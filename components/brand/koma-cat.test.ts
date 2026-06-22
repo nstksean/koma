@@ -53,4 +53,13 @@ describe("KomaCat", () => {
     const stretching = renderToStaticMarkup(createElement(KomaCat, { stretch: true }));
     expect(stretching).toContain("koma-cat-stretch");
   });
+
+  it("opts into the 筆順 draw (loading) animation only when asked", () => {
+    const plain = renderToStaticMarkup(createElement(KomaCat));
+    expect(plain).not.toContain("koma-cat-draw");
+    const drawing = renderToStaticMarkup(createElement(KomaCat, { drawing: true }));
+    expect(drawing).toContain("koma-cat-draw");
+    // 筆順描繪靠 pathLength=1 正規化各筆長度;少了它 dashoffset 動畫會錯亂。
+    expect(drawing).toContain('pathLength="1"');
+  });
 });

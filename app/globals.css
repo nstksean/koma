@@ -210,3 +210,51 @@
     animation: none;
   }
 }
+
+/* 載入態:品牌貓以「筆順」現身(DESIGN Motion:載入是貓的出現點)。
+   毛筆感 = round linecap + stroke 由無到有漸進描繪(stroke-dashoffset 1→0);
+   筆順 = 各 path 依序延遲落筆;寫完短暫停留再淡出,迴圈重來。
+   pathLength=1 已在 SVG 上設定,故 dasharray/offset 用正規化的 1 即可,與線段實長無關。 */
+@keyframes koma-cat-draw {
+  0% {
+    stroke-dashoffset: 1;
+    opacity: 1;
+  }
+  45% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  78% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+.koma-cat-draw path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: koma-cat-draw 2.4s ease-in-out infinite;
+}
+/* 筆順:身體(最長)→ 雙耳 → 閉眼弧(點睛),依序落筆。 */
+.koma-cat-draw path:nth-of-type(1) {
+  animation-delay: 0ms;
+}
+.koma-cat-draw path:nth-of-type(2) {
+  animation-delay: 480ms;
+}
+.koma-cat-draw path:nth-of-type(3) {
+  animation-delay: 640ms;
+}
+.koma-cat-draw path:nth-of-type(4) {
+  animation-delay: 820ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .koma-cat-draw path {
+    /* 不動:直接顯示完整的貓(無閃爍、無描繪),維持陪伴感但零動態。 */
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}

@@ -33,9 +33,9 @@ export default function SearchLoading() {
         ))}
       </ul>
 
-      {/* 載入時的品牌貓(DESIGN:載入是貓的出現點之一);呼吸動畫帶出陪伴感。 */}
+      {/* 載入時的品牌貓(DESIGN:載入是貓的出現點之一);筆順描繪帶出陪伴感。 */}
       <div className="mt-10 flex flex-col items-center gap-2 text-sm text-muted-foreground">
-        <KomaCat size={72} breathing className="text-brand/60" />
+        <KomaCat size={72} drawing className="text-brand" />
         <span>貓正在翻書…</span>
       </div>
     </main>

@@ -17,6 +17,11 @@ export interface KomaCatProps {
   breathing?: boolean;
   /** 開 app / 進首頁時「伸懶腰」一次的進場動畫;尊重 prefers-reduced-motion(見 globals.css)。 */
   stretch?: boolean;
+  /**
+   * 載入態:像毛筆依「筆順」把貓一筆一筆描出來、寫完淡出再重來(無限迴圈)。
+   * 用於 loading.tsx;尊重 prefers-reduced-motion(reduce 時直接顯示完整的貓,見 globals.css)。
+   */
+  drawing?: boolean;
   style?: CSSProperties;
 }
 
@@ -33,6 +38,7 @@ export function KomaCat({
   label,
   breathing = false,
   stretch = false,
+  drawing = false,
   style,
 }: KomaCatProps) {
   const height = Math.round((size * VIEW_H) / VIEW_W);
@@ -50,19 +56,23 @@ export function KomaCat({
       {...a11y}
     >
       <g
+        className={drawing ? "koma-cat-draw" : undefined}
         fill="none"
         stroke="currentColor"
         strokeWidth={2.6}
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        {/* 蜷起的身體與尾巴 */}
-        <path d="M112 72 C134 56 126 22 90 20 C50 18 24 40 30 66 C34 82 56 84 66 74 C76 64 70 48 56 50 C46 51 46 62 54 64" />
-        {/* 兩隻耳朵 */}
-        <path d="M84 22 l4 -13 l11 9" />
-        <path d="M101 20 l11 -8 l2 13" />
-        {/* 閉眼的弧(睡著) */}
-        <path d="M92 40 q5 4 11 0" />
+        {/* 筆順 1:蜷起的身體與尾巴(最長一筆,先落) */}
+        <path
+          pathLength={1}
+          d="M112 72 C134 56 126 22 90 20 C50 18 24 40 30 66 C34 82 56 84 66 74 C76 64 70 48 56 50 C46 51 46 62 54 64"
+        />
+        {/* 筆順 2–3:兩隻耳朵 */}
+        <path pathLength={1} d="M84 22 l4 -13 l11 9" />
+        <path pathLength={1} d="M101 20 l11 -8 l2 13" />
+        {/* 筆順 4:閉眼的弧(睡著,最後一點睛) */}
+        <path pathLength={1} d="M92 40 q5 4 11 0" />
       </g>
     </svg>
   );

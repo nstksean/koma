@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Koma favicon — 品牌蜷睡貓(#cat-curl)置於 Cat-Eye Dusk 方磚。
+       固定用預設主題色(夜底 #151A19 + 貓眼霧綠 #7FBBA2),favicon 不隨 app 主題切換。
+       線條加粗以保 16–32px 可辨;貓藝術從 140×90 經 transform 置中進 100×100 方框。 -->
+  <rect width="100" height="100" rx="22" fill="#151A19"/>
+  <g transform="translate(-4.6 17.9) scale(0.69)"
+     fill="none" stroke="#7FBBA2" stroke-width="6"
+     stroke-linecap="round" stroke-linejoin="round">
+    <path d="M112 72 C134 56 126 22 90 20 C50 18 24 40 30 66 C34 82 56 84 66 74 C76 64 70 48 56 50 C46 51 46 62 54 64"/>
+    <path d="M84 22 l4 -13 l11 9"/>
+    <path d="M101 20 l11 -8 l2 13"/>
+    <path d="M92 40 q5 4 11 0"/>
+  </g>
+</svg>
