@@ -2,8 +2,8 @@
 
 import { Flame, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useMounted } from "@/lib/use-mounted";
 
 // 三主題循環(DESIGN:預設貓眼 → 暖夜 → 淨紙)。
 const THEMES = [
@@ -14,8 +14,7 @@ const THEMES = [
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useMounted();
 
   const found = THEMES.findIndex((t) => t.id === theme);
   const current = THEMES[found === -1 ? 0 : found];

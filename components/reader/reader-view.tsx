@@ -19,6 +19,7 @@ import { AudioPlayer } from "@/components/reader/audio-player";
 import { KomaCat } from "@/components/brand/koma-cat";
 import { saveProgressAction } from "@/app/actions";
 import { cn } from "@/lib/utils";
+import { useMounted } from "@/lib/use-mounted";
 
 interface ReaderViewProps {
   source: string;
@@ -87,7 +88,10 @@ export function ReaderView({
   initialScrollRatio,
 }: ReaderViewProps) {
   const router = useRouter();
-  const [settings, setSettings] = useState<ReaderSettings>(DEFAULT_SETTINGS);
+  const mounted = useMounted();
+  // 從 localStorage 惰性初始化(SSR 端 loadSettings 回 DEFAULT)。實際套用到
+  // 內文的樣式改用 `view`(下方)以 mounted 守門,避免 hydration 不一致。
+  const [settings, setSettings] = useState<ReaderSettings>(loadSettings);
   const [showSettings, setShowSettings] = useState(false);
   const [scrollPct, setScrollPct] = useState(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -105,7 +109,9 @@ export function ReaderView({
   const chapterHref = (n: number) =>
     `/read/${source}/${encodeURIComponent(sourceBookId)}/${n}`;
 
-  useEffect(() => setSettings(loadSettings()), []);
+  // 內文實際套用的設定:掛載前(SSR + 首次 hydration)恆用 DEFAULT,與伺服器
+  // 輸出一致;掛載後才換成使用者的 localStorage 設定。
+  const view = mounted ? settings : DEFAULT_SETTINGS;
 
   useEffect(() => {
     try {
@@ -261,12 +267,12 @@ export function ReaderView({
       <article
         className={cn(
           "reader-content mx-auto max-w-2xl px-5 py-8",
-          settings.fontFamily === "serif" ? "font-serif" : "font-sans",
+          view.fontFamily === "serif" ? "font-serif" : "font-sans",
         )}
         style={
           {
-            "--reader-font-size": `${settings.fontSize}rem`,
-            "--reader-line-height": String(settings.lineHeight),
+            "--reader-font-size": `${view.fontSize}rem`,
+            "--reader-line-height": String(view.lineHeight),
           } as React.CSSProperties
         }
       >

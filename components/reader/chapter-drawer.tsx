@@ -1,11 +1,12 @@
 "use client";
 
 import { List, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { ChapterList } from "@/components/chapter-list";
 import { listChaptersAction } from "@/app/actions";
+import { useMounted } from "@/lib/use-mounted";
 
 interface ChapterRef {
   idx: number;
@@ -26,19 +27,19 @@ export function ChapterDrawer({
   const [open, setOpen] = useState(false);
   const [chapters, setChapters] = useState<ChapterRef[] | null>(null);
   const [loading, setLoading] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
 
-  useEffect(() => setMounted(true), []);
-
-  // 開啟時才延遲載入目錄（避免每次進閱讀器都塞整本目錄）。
-  useEffect(() => {
-    if (!open || chapters || loading) return;
+  // 開啟目錄=使用者動作,故在 handler 內取資料(而非 effect):首次開啟才延遲
+  // 載入整本目錄,之後沿用已載入的清單。
+  const handleOpen = useCallback(() => {
+    setOpen(true);
+    if (chapters || loading) return;
     setLoading(true);
     listChaptersAction(source, sourceBookId)
       .then((cs) => setChapters(cs.map((c) => ({ idx: c.idx, title: c.title }))))
       .catch(() => setChapters([]))
       .finally(() => setLoading(false));
-  }, [open, chapters, loading, source, sourceBookId]);
+  }, [chapters, loading, source, sourceBookId]);
 
   // Esc 關閉 + 鎖背景捲動。
   useEffect(() => {
@@ -61,7 +62,7 @@ export function ChapterDrawer({
         variant="ghost"
         size="icon"
         aria-label="章節目錄"
-        onClick={() => setOpen(true)}
+        onClick={handleOpen}
       >
         <List />
       </Button>

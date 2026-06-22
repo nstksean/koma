@@ -99,16 +99,17 @@ export function useTtsHighlight({
     }
   }, []);
 
-  const loop = useCallback(() => {
-    const audio = audioRef.current;
-    if (audio) applyHighlight(audio.currentTime * 1000);
-    rafRef.current = requestAnimationFrame(loop);
-  }, [audioRef, applyHighlight]);
-
   const start = useCallback(() => {
     if (rafRef.current !== null) return; // 已在跑,避免雙重 loop
-    rafRef.current = requestAnimationFrame(loop);
-  }, [loop]);
+    // tick 為本地函式,以自身名稱遞迴排程(由 rAF 在初始化後才呼叫,無 TDZ 問題);
+    // 不再用會自我參照的 useCallback(觸發 react-hooks「access before declared」)。
+    const tick = () => {
+      const audio = audioRef.current;
+      if (audio) applyHighlight(audio.currentTime * 1000);
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+  }, [audioRef, applyHighlight]);
 
   const refresh = useCallback(() => {
     const audio = audioRef.current;
