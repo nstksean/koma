@@ -3,7 +3,7 @@
 **日期**：2026-06-15（2026-06-16 補 Azure 真打實測結論，見 §2.1）
 **對應**：階段 3（TTS 卡拉OK聽書）；[`mvp-stage0-plan.md` §8.5](./mvp-stage0-plan.md)、[`spike-native-plugin.md`](../assessments/spike-native-plugin.md)、[`evidence-ios-pwa-background-audio.md`](./evidence-ios-pwa-background-audio.md)
 **前置**：stage-0（[01](./01-foundation-and-data-layer.md)/[02](./02-fetch-and-api-layer.md)/[03](./03-pages-and-reader-ux.md)）閱讀器可用；**IQT char-level timestamp spike 結果**（[`scripts/spike-tts-iqt.ts`](../../../scripts/spike-tts-iqt.ts)）
-**狀態**：📝 規劃中（只描述怎麼做，**尚未動程式碼**；本階段不碰 `db/`，僅盤點欄位需求）
+**狀態**：🚧 實作中（純-TS 骨架已落地：T2 契約 + §3 schema + §2.1.1 詞→字均分 + §5.1 同步器核心，見 `src/tts/`，2026-06-22；player / provider 實作仍待。本階段不碰 `db/`，僅盤點欄位需求）
 
 > 延續 01～03 的執行文件體例（任務分解 + DoD + 驗收）。本文件描述「聽書」如何在**不重寫 stage-0 web 閱讀器**的前提下長出來。
 > 核心策略（§8.5）：**音源層與播放管線層解耦**。過渡期音源用 **Azure 暫代**，最終換 **自家 IQT**——**換源只動「音源 Provider」，不動 player / 同步 / 高亮**。
@@ -36,12 +36,12 @@
 | # | 任務 | 產出 | 依賴 |
 |---|------|------|------|
 | T1 | ~~**IQT char-level timestamp spike**（gating）~~ ✅ **2026-06-16 真打完成 → voai.ai 不吐 timestamp（§2.2）** | `scripts/spike-tts-iqt.ts`(真打 voai) | ✅ 已解(API 已拿到) |
-| T2 | 定義 **音源 Provider 抽象** `AudioSourceProvider` + 統一資料形狀 `ChapterAudio` | 介面定義（純 TS） | — |
-| T3 | 實作 **Azure provider**（過渡暫代） | `azureProvider`（Batch synthesis → audio + word boundary JSON） | T2、`scripts/spike-tts-azure.ts` |
-| T4 | 設計 **timestamp JSON schema** + per-chapter 合成流程 | schema 草案（§3） | T2 |
+| T2 | 定義 **音源 Provider 抽象** `AudioSourceProvider` + 統一資料形狀 `ChapterAudio` | ✅ **2026-06-22 已實作** [`src/tts/types.ts`](../../../src/tts/types.ts) + [`src/tts/index.ts`](../../../src/tts/index.ts)（純 TS 契約、tsc 綠） | — |
+| T3 | 實作 **Azure provider**（過渡暫代） | `azureProvider`（Batch synthesis → audio + word boundary JSON）；詞→字均分已備 [`src/tts/azure-normalize.ts`](../../../src/tts/azure-normalize.ts) | T2、`scripts/spike-tts-azure.ts` |
+| T4 | 設計 **timestamp JSON schema** + per-chapter 合成流程 | ✅ schema 定稿為真型別 `ChapterAudio`/`CharTimestamp`（§3、`src/tts/types.ts`） | T2 |
 | T5 | 設計 **音檔快取策略**（per-chapter 預合成、落地、失效） | 快取規格（§4） | T3/T4 |
 | T6 | 選定 / 接上 **PlayerEngine（native plugin）** | 見 [`spike-native-plugin.md`](../assessments/spike-native-plugin.md) | native plugin 選型 |
-| T7 | 實作 **逐字高亮同步器**（binary-search timing map + 變速換算） | 同步器（純 TS，可單測） | T4、T6 |
+| T7 | 實作 **逐字高亮同步器**（binary-search timing map + 變速換算） | ⏳ **核心 `activeCharIndex` ✅ 2026-06-22 已實作 + 單測** [`src/tts/sync.ts`](../../../src/tts/sync.ts)；變速 rAF 補幀 / seek / 接 player 仍待 T6 | T4、T6 |
 | T8 | 接上 **IQT provider**（換源驗證：上層不動） | `iqtProvider` | T1、T2 |
 | T9 | DoD 驗收（§7） | 整條鏈路在實機綠燈 | T1–T8 |
 
@@ -50,6 +50,8 @@
 ---
 
 ## 2. 音源 Provider 抽象（換源切點，純 TS）
+
+> ✅ **2026-06-22 已落地真程式碼**：下方介面已實作於 [`src/tts/types.ts`](../../../src/tts/types.ts)（型別 `readonly` 化、補 `SynthesizeInput`），對外經 [`src/tts/index.ts`](../../../src/tts/index.ts) barrel 暴露。契約測試 [`tests/tts/contract.test.ts`](../../../tests/tts/contract.test.ts) 以 mock provider 證明「provider 輸出 `ChapterAudio` → 同步器消費」端到端連通。tsc 綠、20 條 TTS 單測通過。
 
 ```ts
 // 統一資料形狀：任何音源都輸出這個，上層只認它
@@ -107,6 +109,8 @@ interface AudioSourceProvider {
 > 對照 T1（IQT, gating）:**2026-06-16 真打證明 voai.ai 根本不吐 timestamp(§2.2)** —— 原本「IQT 直接吐純字級」的樂觀假設不成立。因此 Azure 這條「就算只有詞級也均分得出字級」的暫代路線,從「過渡備案」升格為**現階段唯一已驗證可逐字高亮的音源**,風險對沖價值更高。
 
 ### 2.1.1 詞→字均分正規化（可單測純函式）
+
+> ✅ **2026-06-22 已實作** [`src/tts/azure-normalize.ts`](../../../src/tts/azure-normalize.ts)（9 條單測 [`tests/tts/azure-normalize.test.ts`](../../../tests/tts/azure-normalize.test.ts)：過濾標點 / 2-char 詞均分 / offset 正規化 / code-point 切 surrogate / 全 1-char no-op / durationMs=0 退化 / 空輸入）。下方為設計原稿。
 
 Azure provider 的核心轉換:把 raw `wordBoundary` 事件 → §2 的 `CharTimestamp[]`。三件事一次做完——**過濾標點 / 依字數均分時間 / 把 SSML-relative offset 正規化回純文字 index**。純函式、無副作用,可獨立單測(對齊 §5.1 `activeCharIndex` 的風格)。
 
@@ -263,6 +267,8 @@ function azureWordsToChars(
 
 ### 5.1 timing map + binary search
 
+> ✅ **2026-06-22 已實作** [`src/tts/sync.ts`](../../../src/tts/sync.ts)（`activeCharIndex`，8 條單測 [`tests/tts/sync.test.ts`](../../../tests/tts/sync.test.ts)）。下方為設計原稿；實作補了 sorted 前置條件註記（呼叫端負責、每幀不做 O(n) 檢查）。rAF 補幀與變速換算（§5.2）待接 player 時實作。
+
 - 把 `chars[]`（已按 `startMs` 遞增）當成查找表。播放時拿 player 回拋的 `currentMs`，用 **binary search** 找「最後一個 `startMs <= currentMs` 的 char」即為當前高亮字。
   - O(log n) per frame，整章上千字也無感。
 - player 的 `currentMs` 回拋頻率若不足以支撐 ~100ms 一字（中文一字 ≈ 100ms，屬精度邊界，見 §8.5 修正 2），就在 web 層用 `requestAnimationFrame` 內插：以「上次回拋 currentMs + 經過的牆鐘時間 × rate」估算當前 ms，binary search 仍用估算值。**真相仍是 player 的 currentMs，rAF 只做幀間補點**，避免高亮卡頓。
@@ -305,11 +311,11 @@ function activeCharIndex(chars: CharTimestamp[], currentMs: number): number {
 ## 7. DoD（階段 3 完成定義）
 
 - [x] **T1**:`npm run spike:tts:iqt` 已**真跑**(voai.ai)。結論:**回應僅 audio/wav、無任何 timestamp(§2.2)**。後續 timing 來源 = forced alignment 或內部請 voai 團隊加 boundary 輸出(已升級為內部行動項)。
-- [ ] `AudioSourceProvider` 抽象 + `ChapterAudio` 形狀定稿，Azure / IQT / Eleven 三 provider 輸出同一形狀。
+- [x] **抽象定稿**（2026-06-22）：`AudioSourceProvider` + `ChapterAudio` 形狀已實作於 `src/tts/types.ts`，contract test 證明可實作。⏳ Azure / IQT / Eleven 三 provider 本體尚未實作（待 T3 / T8）。
 - [ ] Azure provider 能 per-chapter 合成出 audio + timestamp JSON（schema §3），`includesPunctuation` 與渲染約定一致。
 - [ ] 音檔快取：同章重播不重合成；改內文（`textHash` 變）自動重合成；換音色 / 換源不撞快取。
 - [ ] native plugin（[`spike-native-plugin.md`](../assessments/spike-native-plugin.md)）實機通過：**鎖屏控制（`MPRemoteCommandCenter`）**、背景 30 分鐘不斷音、自動跳章、變速、seek。
-- [ ] 逐字高亮：實機播放時高亮逐字跟拍；變速（0.5×–3×）下仍對齊；點字 seek 正確；`activeCharIndex` 有單元測試（沿用 testing 規範 80%）。
+- [~] 逐字高亮：`activeCharIndex` ✅ 已實作 + 8 條單測（`src/tts/sync.ts`，含 gap / 邊界 / 千字章）。⏳ 實機逐字跟拍、變速（0.5×–3×）對齊、點字 seek 仍待接 player（T6）。
 - [ ] **換源驗證**：把 provider 從 Azure 換成 IQT，player / 同步 / 高亮 **零改動**，整條鏈路仍綠。
 
 ---
