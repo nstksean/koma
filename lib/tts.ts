@@ -85,8 +85,10 @@ async function readCache(
   try {
     const raw = await readFile(jsonPath, "utf8");
     meta = JSON.parse(raw) as CacheMeta;
-  } catch {
+  } catch (err) {
     // 壞檔（截斷/非 JSON）→ 當 miss，後續重新合成覆寫。
+    // 記 server 端(不靜默吞掉):持續損壞會在 log 顯形,而非無聲重合成。
+    console.warn("[tts] 快取 meta 損壞,當 miss 處理:", jsonPath, err);
     return null;
   }
 
@@ -176,6 +178,11 @@ export async function getChapterAudioMeta(
     // ⚠️ 餵「原始」bookSource/slug：adapter 查找靠的是真實 id，不能用 sanitize 後的值。
     const view = await getChapterView(bookSource, slug, idx);
     const content = view.content;
+    // 空/全空白章節不合成:否則會產出 44-byte 空 WAV 並永久快取成「有效」結果。
+    // 含「找不到」字樣 → route 對應為 404(非 500),且不落地快取。
+    if (!content || content.trim() === "") {
+      throw new Error("找不到章節內文");
+    }
     const textHash = hashContent(content);
 
     const dir = path.join(CACHE_ROOT, sourceSafe, voiceSafe, slugSafe);

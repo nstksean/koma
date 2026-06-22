@@ -18,7 +18,16 @@ export interface AzureChapterResult {
 const SAMPLE_RATE = 24_000; // Raw24Khz16BitMonoPcm
 const MAX_CODE_POINTS = 900; // 每段 code-point 上限(避開 Azure 單次音長上限)
 const MAX_ATTEMPTS = 3; // 單段合成失敗重試上限
+const RETRY_BASE_MS = 250; // 重試退避基數(指數退避 + jitter)
 const TICKS_PER_MS = 10_000; // SDK 100-ns tick → ms
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+/** 指數退避 + 隨機 jitter:避免對 Azure 連發重試加劇 throttle / thundering herd。 */
+function backoffDelayMs(attempt: number): number {
+  return RETRY_BASE_MS * 2 ** (attempt - 1) + Math.floor(Math.random() * RETRY_BASE_MS);
+}
 
 /**
  * 把 SDK 的 boundaryType enum 映射成 AzureBoundary.type 字串(沿用 spike 的
@@ -142,6 +151,14 @@ async function synthesizeSegmentWithRetry(
       return await synthesizeSegment(key, region, voice, text);
     } catch (err) {
       lastErr = err;
+      // 逐次失敗記在 server 端(含脈絡),不靜默吞掉;非末次則退避後重試。
+      console.error(
+        `[tts] Azure 單段合成失敗(attempt ${attempt}/${MAX_ATTEMPTS}, voice=${voice}, len=${text.length}):`,
+        err instanceof Error ? err.message : String(err),
+      );
+      if (attempt < MAX_ATTEMPTS) {
+        await sleep(backoffDelayMs(attempt));
+      }
     }
   }
   throw new Error(
