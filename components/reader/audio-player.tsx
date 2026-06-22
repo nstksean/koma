@@ -186,6 +186,7 @@ export function AudioPlayer({
       audio.preservesPitch = true; // 變速防變調
       audio.playbackRate = PLAYBACK_RATES[rateIdxRef.current]; // 讀最新檔位,非 capture
       loadedRef.current = true;
+      setStatus("ready"); // 合成完、未播:播放鈕轉可按(loadAndPlay 隨後覆寫為 playing)
       return true;
     } catch {
       // 卸載 abort 不是錯誤,靜默丟棄(避免對已卸載元件 setState)。
@@ -243,6 +244,16 @@ export function AudioPlayer({
     },
     [ensureLoaded, start, refresh, onPlayingChange],
   );
+
+  // 開章自動預先合成(prefetch),不自動播放:瀏覽器 autoplay policy 會擋無互動的
+  // play(),故僅預跑 server 惰性合成 + 設 audio.src,狀態轉 ready,使用者按播放即秒回。
+  // 換章時 reader-view 以 key={chapterId} 重掛本元件 → mounted false→true 再跑一次。
+  // ensureLoaded 冪等(loadedRef 守門),身分變動誤觸亦無害,故僅依 mounted。
+  useEffect(() => {
+    if (!mounted) return;
+    void ensureLoaded();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted]);
 
   // 讓 hook 的點字委派(stableSeek)呼叫到最新的 seekAndPlayToChar。
   // 在 effect 內更新 ref(不在 render 階段寫 ref);stableSeek 只在使用者點字
