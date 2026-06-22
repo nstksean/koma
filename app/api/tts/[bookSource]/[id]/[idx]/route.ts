@@ -1,6 +1,9 @@
-import { open, readFile, stat } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { open, stat } from "node:fs/promises";
+import { Readable } from "node:stream";
 
 import { getChapterAudioMeta } from "@/lib/tts";
+import { parseTtsParams } from "./parse-params";
 
 /**
  * 章節音訊串流 route：GET /api/tts/<bookSource>/<id>/<idx>?voice=...
@@ -13,7 +16,6 @@ import { getChapterAudioMeta } from "@/lib/tts";
  */
 export const runtime = "nodejs";
 
-const DEFAULT_VOICE = "zh-TW-HsiaoChenNeural";
 const IMMUTABLE = "public, max-age=31536000, immutable";
 
 /** 解析 `Range: bytes=start-end`(end 可省)。回 null 表無/不合法 Range。 */
@@ -66,16 +68,9 @@ export async function GET(
   req: Request,
   ctx: { params: Promise<{ bookSource: string; id: string; idx: string }> },
 ): Promise<Response> {
-  const { bookSource, id, idx } = await ctx.params;
-  const slug = decodeURIComponent(id);
-  const idxNum = Number(idx);
-
-  // 系統邊界驗證:idx 必為整數。
-  if (!Number.isInteger(idxNum)) {
-    return new Response("bad idx", { status: 400 });
-  }
-
-  const voice = new URL(req.url).searchParams.get("voice") ?? DEFAULT_VOICE;
+  const parsed = parseTtsParams(await ctx.params, req.url);
+  if (!parsed.ok) return parsed.response;
+  const { bookSource, slug, idxNum, voice } = parsed.params;
 
   try {
     const file = await getChapterAudioMeta(bookSource, slug, idxNum, voice);
@@ -100,8 +95,12 @@ export async function GET(
     }
 
     // 無 Range → 整檔 200,但聲明 Accept-Ranges(讓瀏覽器知道可 seek)。
-    const buffer = await readFile(file.wavPath);
-    return new Response(buffer, {
+    // 串流而非整檔載入:一章 PCM WAV 可達數十 MB,整檔 buffer 在無 Range 並發拉取下
+    // 會逐請求佔住記憶體;createReadStream 把單請求記憶體壓在固定 chunk 大小。
+    const webStream = Readable.toWeb(
+      createReadStream(file.wavPath),
+    ) as unknown as ReadableStream<Uint8Array>;
+    return new Response(webStream, {
       headers: {
         "Content-Type": "audio/wav",
         "Content-Length": String(size),

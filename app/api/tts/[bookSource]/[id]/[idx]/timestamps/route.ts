@@ -1,5 +1,6 @@
 import { getChapterAudioMeta } from "@/lib/tts";
 import type { TimestampsPayload } from "@/src/tts";
+import { parseTtsParams } from "../parse-params";
 
 /**
  * 章節逐字 timestamp route:GET /api/tts/<bookSource>/<id>/<idx>/timestamps?voice=...
@@ -10,22 +11,13 @@ import type { TimestampsPayload } from "@/src/tts";
  */
 export const runtime = "nodejs";
 
-const DEFAULT_VOICE = "zh-TW-HsiaoChenNeural";
-
 export async function GET(
   req: Request,
   ctx: { params: Promise<{ bookSource: string; id: string; idx: string }> },
 ): Promise<Response> {
-  const { bookSource, id, idx } = await ctx.params;
-  const slug = decodeURIComponent(id);
-  const idxNum = Number(idx);
-
-  // 系統邊界驗證:idx 必為整數。
-  if (!Number.isInteger(idxNum)) {
-    return new Response("bad idx", { status: 400 });
-  }
-
-  const voice = new URL(req.url).searchParams.get("voice") ?? DEFAULT_VOICE;
+  const parsed = parseTtsParams(await ctx.params, req.url);
+  if (!parsed.ok) return parsed.response;
+  const { bookSource, slug, idxNum, voice } = parsed.params;
 
   try {
     const file = await getChapterAudioMeta(bookSource, slug, idxNum, voice);
