@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils";
 import { useTtsHighlight } from "./use-tts-highlight";
 
 /** 變速循環檔位(上限 2×,防變調由 preservesPitch 處理)。 */
-const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 2] as const;
+const PLAYBACK_RATES = [ 1, 1.25, 1.5, 1.75, 2] as const;
 const DEFAULT_VOICE = "zh-TW-HsiaoChenNeural";
 
 type PlayerStatus =
