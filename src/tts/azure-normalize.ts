@@ -20,6 +20,11 @@ import type { AzureBoundary, CharTimestamp } from "./types";
  * @param boundaries Azure SDK wordBoundary 事件（或 Batch 的 `[n].word.json`，欄位同構）。
  * @param offsetBase SSML 前綴長度。用 speakTextAsync 純文字輸入時為 0；
  *                   用 speakSsmlAsync 時 = ssmlPrefix.length。算錯會整章 charIndex 平移錯位。
+ *                   ⚠️ 亦可為「負值」:逐段合成(synthesizeAzureChapter)時呼叫端傳
+ *                   `-cpStart`(段首在原文的 code-point index 取負),使
+ *                   `textOffset - offsetBase` 變成「加回 cpStart」以還原全域 charIndex。
+ *                   這是刻意的 sign overload,勿當成 bug「修正」(會整章平移)。見
+ *                   tests/tts/stitch-integration.test.ts。
  */
 export function azureWordsToChars(
   boundaries: readonly AzureBoundary[],
