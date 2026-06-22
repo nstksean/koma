@@ -28,7 +28,7 @@ describe("AudioSourceProvider 契約 → 同步器", () => {
         schemaVersion: 1,
         bookId: input.bookId,
         chapterId: input.chapterId,
-        source: "azure",
+        engine: "azure",
         voice: input.voice,
         audioFileUrl: "456.mp3",
         durationMs: 600,
@@ -46,7 +46,7 @@ describe("AudioSourceProvider 契約 → 同步器", () => {
       voice: "zh-CN-XiaoxiaoNeural",
     });
 
-    expect(audio.source).toBe("azure");
+    expect(audio.engine).toBe("azure");
     // 標點被 provider 濾掉，charTimestamps 只含可高亮的漢字
     expect(audio.charTimestamps.map((c) => c.char).join("")).toBe("夜色深");
     expect(audio.includesPunctuation).toBe(false);

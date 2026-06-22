@@ -3,7 +3,7 @@ import { open, readFile, stat } from "node:fs/promises";
 import { getChapterAudioMeta } from "@/lib/tts";
 
 /**
- * 章節音訊串流 route：GET /api/tts/<source>/<id>/<idx>?voice=...
+ * 章節音訊串流 route：GET /api/tts/<bookSource>/<id>/<idx>?voice=...
  *
  * 確保該章已合成並落地（getChapterAudioMeta 命中秒回/否則合成），再回 wav bytes。
  * 依賴 Azure SDK + node:fs/crypto,必為 nodejs runtime(不可 Edge)。
@@ -64,9 +64,9 @@ async function readSlice(
 
 export async function GET(
   req: Request,
-  ctx: { params: Promise<{ source: string; id: string; idx: string }> },
+  ctx: { params: Promise<{ bookSource: string; id: string; idx: string }> },
 ): Promise<Response> {
-  const { source, id, idx } = await ctx.params;
+  const { bookSource, id, idx } = await ctx.params;
   const slug = decodeURIComponent(id);
   const idxNum = Number(idx);
 
@@ -78,7 +78,7 @@ export async function GET(
   const voice = new URL(req.url).searchParams.get("voice") ?? DEFAULT_VOICE;
 
   try {
-    const file = await getChapterAudioMeta(source, slug, idxNum, voice);
+    const file = await getChapterAudioMeta(bookSource, slug, idxNum, voice);
     const { size } = await stat(file.wavPath);
     const range = parseRange(req.headers.get("range"), size);
 

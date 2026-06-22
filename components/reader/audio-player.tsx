@@ -39,7 +39,7 @@ type PlayerStatus =
   | "error";
 
 interface AudioPlayerProps {
-  source: string;
+  bookSource: string;
   sourceBookId: string; // = slug
   idx: number; // 章序;換章時 reader-view 用 key={chapterId} 重掛本元件
   voice?: string;
@@ -72,7 +72,7 @@ function formatTime(ms: number): string {
 }
 
 export function AudioPlayer({
-  source,
+  bookSource,
   sourceBookId,
   idx,
   voice = DEFAULT_VOICE,
@@ -153,14 +153,14 @@ export function AudioPlayer({
     setStatus("loading");
     setErrorMsg("");
     try {
-      const res = await fetch(ttsTimestampsUrl(source, sourceBookId, idx, voice));
+      const res = await fetch(ttsTimestampsUrl(bookSource, sourceBookId, idx, voice));
       if (!res.ok) throw new Error(`合成失敗(${res.status})`);
       const payload = (await res.json()) as TimestampsPayload;
       charsRef.current = payload.charTimestamps;
       setChars(payload.charTimestamps);
       setDurationMs(payload.durationMs);
       // 此時 server 已完成合成,音檔秒回。
-      audio.src = ttsAudioUrl(source, sourceBookId, idx, voice);
+      audio.src = ttsAudioUrl(bookSource, sourceBookId, idx, voice);
       audio.preservesPitch = true; // 變速防變調
       audio.playbackRate = PLAYBACK_RATES[rateIdx];
       loadedRef.current = true;
@@ -173,7 +173,7 @@ export function AudioPlayer({
     } finally {
       loadingRef.current = false;
     }
-  }, [source, sourceBookId, idx, voice, rateIdx, setChars, onPlayingChange]);
+  }, [bookSource, sourceBookId, idx, voice, rateIdx, setChars, onPlayingChange]);
 
   /** 播放鈕:確保載入 → 從目前位置播(首播為 0)。 */
   const loadAndPlay = useCallback(async () => {

@@ -306,7 +306,7 @@ export function ReaderView({
       {/* TTS 聽書播放器(portal 到 body)。key=chapterId → 換章自動重置。 */}
       <AudioPlayer
         key={chapterId}
-        source={source}
+        bookSource={source}
         sourceBookId={sourceBookId}
         idx={idx}
         containerRef={contentRef}

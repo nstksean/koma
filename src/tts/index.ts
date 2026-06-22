@@ -5,7 +5,7 @@
  */
 
 export type {
-  TtsSource,
+  TtsEngine,
   CharTimestamp,
   ChapterAudio,
   SynthesizeInput,

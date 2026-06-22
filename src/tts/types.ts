@@ -9,8 +9,9 @@
  * 所有回傳皆為 immutable plain object（遵守 coding-style 不可變原則）。
  */
 
-/** 已驗證的音源引擎 id（快取鍵的一部分，見 §4）。 */
-export type TtsSource = "azure" | "iqt" | "eleven";
+/** 已驗證的 TTS 合成引擎 id（快取鍵的一部分，見 §4）。注意:這是「引擎」非「書源」——
+ *  書源（czbooks/ttkan/local）走 route 的 [bookSource] 片段，與本型別正交，勿混用。 */
+export type TtsEngine = "azure" | "iqt" | "eleven";
 
 /**
  * 逐字 timing 的最小單位。`startMs`/`endMs` 對齊 audio 檔的「1.0× 毫秒」
@@ -37,7 +38,7 @@ export interface ChapterAudio {
   readonly schemaVersion: 1;
   readonly bookId: number;
   readonly chapterId: number;
-  readonly source: TtsSource; // 哪個引擎合成的（快取鍵的一部分）
+  readonly engine: TtsEngine; // 哪個引擎合成的（快取鍵的一部分）
   readonly voice: string; // 音色 id
   readonly audioFileUrl: string; // 落地後的本機 / CDN 音檔路徑
   readonly durationMs: number;
@@ -65,7 +66,7 @@ export interface SynthesizeInput {
  * IQT=forced alignment；Eleven=原生 per-char），但對上層形狀一致。
  */
 export interface AudioSourceProvider {
-  readonly id: TtsSource;
+  readonly id: TtsEngine;
   /** 把一章純文字合成成「音檔 + 逐字 timestamp」。 */
   synthesizeChapter(input: SynthesizeInput): Promise<ChapterAudio>;
 }
@@ -103,7 +104,7 @@ export interface TimestampsPayload {
  * `audioUrl` 直接餵 `<audio src>`；其餘欄位同 `TimestampsPayload`。
  */
 export interface ChapterAudioMeta extends TimestampsPayload {
-  readonly source: TtsSource; // 合成引擎（"azure"），非書源
+  readonly engine: TtsEngine; // 合成引擎（"azure"），非書源
   readonly voice: string;
   readonly audioUrl: string;
 }

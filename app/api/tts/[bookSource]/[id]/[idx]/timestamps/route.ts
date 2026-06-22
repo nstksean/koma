@@ -2,7 +2,7 @@ import { getChapterAudioMeta } from "@/lib/tts";
 import type { TimestampsPayload } from "@/src/tts";
 
 /**
- * 章節逐字 timestamp route:GET /api/tts/<source>/<id>/<idx>/timestamps?voice=...
+ * 章節逐字 timestamp route:GET /api/tts/<bookSource>/<id>/<idx>/timestamps?voice=...
  *
  * 回前端高亮所需的最小資料（durationMs + includesPunctuation + charTimestamps）。
  * 與 audio route 共用 getChapterAudioMeta:首呼若未合成會一併觸發合成(命中秒回)。
@@ -14,9 +14,9 @@ const DEFAULT_VOICE = "zh-TW-HsiaoChenNeural";
 
 export async function GET(
   req: Request,
-  ctx: { params: Promise<{ source: string; id: string; idx: string }> },
+  ctx: { params: Promise<{ bookSource: string; id: string; idx: string }> },
 ): Promise<Response> {
-  const { source, id, idx } = await ctx.params;
+  const { bookSource, id, idx } = await ctx.params;
   const slug = decodeURIComponent(id);
   const idxNum = Number(idx);
 
@@ -28,7 +28,7 @@ export async function GET(
   const voice = new URL(req.url).searchParams.get("voice") ?? DEFAULT_VOICE;
 
   try {
-    const file = await getChapterAudioMeta(source, slug, idxNum, voice);
+    const file = await getChapterAudioMeta(bookSource, slug, idxNum, voice);
     const payload: TimestampsPayload = {
       durationMs: file.durationMs,
       includesPunctuation: file.includesPunctuation,

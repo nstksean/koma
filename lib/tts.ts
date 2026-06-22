@@ -45,7 +45,7 @@ export interface ChapterAudioFile {
  */
 interface CacheMeta {
   readonly schemaVersion: typeof SCHEMA_VERSION;
-  readonly source: "azure";
+  readonly engine: "azure";
   readonly voice: string;
   readonly audioFile: string; // 相對檔名 "<idx>.wav"
   readonly durationMs: number;
@@ -123,7 +123,7 @@ async function synthesizeAndCache(
 
   const meta: CacheMeta = {
     schemaVersion: SCHEMA_VERSION,
-    source: "azure",
+    engine: "azure",
     voice,
     audioFile: `${idx}.wav`,
     durationMs: result.durationMs,
