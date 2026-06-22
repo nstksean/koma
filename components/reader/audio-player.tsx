@@ -12,7 +12,7 @@
  * 進度與高亮一律以 `audio.currentTime`(media time)為準,不縮放 timestamp。
  */
 
-import { Gauge, Loader2, Pause, Play } from "lucide-react";
+import { Check, Gauge, Loader2, Pause, Play } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -23,11 +23,18 @@ import { createPortal } from "react-dom";
 import { ttsAudioUrl, ttsTimestampsUrl } from "@/src/tts";
 import type { CharTimestamp, TimestampsPayload } from "@/src/tts";
 import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverClose,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { useMounted } from "@/lib/use-mounted";
 import { useTtsHighlight } from "./use-tts-highlight";
 
-/** 變速循環檔位(上限 2×,防變調由 preservesPitch 處理)。 */
-const PLAYBACK_RATES = [ 1, 1.25, 1.5, 1.75, 2] as const;
+/** 變速檔位(下限 1×、上限 2×,防變調由 preservesPitch 處理)。dropdown 直選,非循環。 */
+const PLAYBACK_RATES = [1, 1.25, 1.5, 1.75, 2] as const;
 const DEFAULT_VOICE = "zh-TW-HsiaoChenNeural";
 
 type PlayerStatus =
@@ -86,8 +93,13 @@ export function AudioPlayer({
   const charsRef = useRef<readonly CharTimestamp[]>([]); // 點字 seek 用:找 charIndex→startMs
   // 指向最新 seekAndPlayToChar(避免把它直接傳進 hook 造成定義循環依賴)。
   const seekRef = useRef<(charIndex: number) => void>(() => {});
+  // 最新語速檔位:ensureLoaded 載入時從 ref 讀(而非 capture rateIdx),
+  // 避免換速後 callback 全churn + 載入瞬間回退 1× 的競態。
+  const rateIdxRef = useRef(1);
+  // 在飛的 timestamps fetch:換章/卸載時 abort,避免 resolve 進已卸載元件。
+  const abortRef = useRef<AbortController | null>(null);
 
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
   const [status, setStatus] = useState<PlayerStatus>("idle");
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [durationMs, setDurationMs] = useState(0);
@@ -104,8 +116,6 @@ export function AudioPlayer({
     audioRef,
     onSeekToChar: stableSeek,
   });
-
-  useEffect(() => setMounted(true), []);
 
   // <audio> 生命週期事件:進度顯示、結束處理。
   // 用 timeupdate(~4Hz)更新進度條 state —— 高亮另走 rAF,兩者刻意分離。
@@ -132,16 +142,22 @@ export function AudioPlayer({
 
   // 卸載(換章/離開閱讀器):暫停音檔並停 rAF。高亮 class 清除由 hook 的
   // cleanup 負責;此處只管音檔與播放狀態通知。
+  // 在 effect body 捕捉 audio(而非 cleanup 內讀 audioRef.current):此節點在
+  // component 生命週期內穩定,捕捉到的即為卸載時的值;detached <audio> 仍會
+  // 續播,故卸載務必 pause。mounted=false 首 commit 尚無 <audio>,提前 return。
   useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
     return () => {
-      const audio = audioRef.current;
-      if (audio) audio.pause();
+      abortRef.current?.abort(); // 取消在飛的 timestamps fetch
+      audio.pause();
       stop();
       onPlayingChange?.(false);
     };
-    // 僅在 unmount 執行;stop/onPlayingChange 為穩定 ref-backed callback。
+    // 僅依 mounted(false→true 跑一次);stop/onPlayingChange 為穩定 callback,
+    // 刻意排除以免身分變動誤觸卸載清理。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [mounted]);
 
   /** 確保已抓 timestamp + 設好 audio.src(冪等,首播觸發 server 惰性合成可能數十秒)。回傳是否就緒。 */
   const ensureLoaded = useCallback(async (): Promise<boolean> => {
@@ -152,20 +168,28 @@ export function AudioPlayer({
     loadingRef.current = true;
     setStatus("loading");
     setErrorMsg("");
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
-      const res = await fetch(ttsTimestampsUrl(bookSource, sourceBookId, idx, voice));
+      const res = await fetch(
+        ttsTimestampsUrl(bookSource, sourceBookId, idx, voice),
+        { signal: controller.signal },
+      );
       if (!res.ok) throw new Error(`合成失敗(${res.status})`);
       const payload = (await res.json()) as TimestampsPayload;
+      if (controller.signal.aborted) return false; // 已換章/卸載,丟棄結果不 setState
       charsRef.current = payload.charTimestamps;
       setChars(payload.charTimestamps);
       setDurationMs(payload.durationMs);
       // 此時 server 已完成合成,音檔秒回。
       audio.src = ttsAudioUrl(bookSource, sourceBookId, idx, voice);
       audio.preservesPitch = true; // 變速防變調
-      audio.playbackRate = PLAYBACK_RATES[rateIdx];
+      audio.playbackRate = PLAYBACK_RATES[rateIdxRef.current]; // 讀最新檔位,非 capture
       loadedRef.current = true;
       return true;
     } catch {
+      // 卸載 abort 不是錯誤,靜默丟棄(避免對已卸載元件 setState)。
+      if (controller.signal.aborted) return false;
       setStatus("error");
       setErrorMsg("聽書合成失敗,請稍後再試。");
       onPlayingChange?.(false);
@@ -173,7 +197,7 @@ export function AudioPlayer({
     } finally {
       loadingRef.current = false;
     }
-  }, [bookSource, sourceBookId, idx, voice, rateIdx, setChars, onPlayingChange]);
+  }, [bookSource, sourceBookId, idx, voice, setChars, onPlayingChange]);
 
   /** 播放鈕:確保載入 → 從目前位置播(首播為 0)。 */
   const loadAndPlay = useCallback(async () => {
@@ -221,7 +245,11 @@ export function AudioPlayer({
   );
 
   // 讓 hook 的點字委派(stableSeek)呼叫到最新的 seekAndPlayToChar。
-  seekRef.current = seekAndPlayToChar;
+  // 在 effect 內更新 ref(不在 render 階段寫 ref);stableSeek 只在使用者點字
+  // 事件時觸發,屆時 effect 早已跑完,ref 必為最新。
+  useEffect(() => {
+    seekRef.current = seekAndPlayToChar;
+  }, [seekAndPlayToChar]);
 
   const handlePlayPause = useCallback(async () => {
     const audio = audioRef.current;
@@ -255,16 +283,16 @@ export function AudioPlayer({
     }
   }, [status, stop, start, loadAndPlay, onPlayingChange]);
 
-  /** 變速 cycle:0.75→1→1.25→1.5→2→回 0.75。即時套用到 audio。 */
-  const handleRateCycle = useCallback(() => {
-    const next = (rateIdx + 1) % PLAYBACK_RATES.length;
+  /** 從 dropdown 直選某檔位,即時套用到 audio(暫停/播放中皆可)。 */
+  const handleRateSelect = useCallback((next: number) => {
     setRateIdx(next);
+    rateIdxRef.current = next; // 同步 ref,供 ensureLoaded 載入時讀最新檔位
     const audio = audioRef.current;
     if (audio) {
       audio.preservesPitch = true;
       audio.playbackRate = PLAYBACK_RATES[next];
     }
-  }, [rateIdx]);
+  }, []);
 
   /** 進度條拖動:設 currentTime(media time),即時重算高亮(暫停時亦然)。 */
   const handleSeek = useCallback(
@@ -282,7 +310,7 @@ export function AudioPlayer({
   const isLoading = status === "loading";
   const isPlaying = status === "playing";
   const isError = status === "error";
-  const rateLabel = `${PLAYBACK_RATES[rateIdx].toFixed(2).replace(/0$/, "")}×`;
+  const rateLabel = `${PLAYBACK_RATES[rateIdx]}×`;
 
   if (!mounted) return null;
 
@@ -291,7 +319,7 @@ export function AudioPlayer({
       {/* 隱藏 <audio>:用 element ref 而非 new Audio(),便於事件掛載與 SSR 安全。 */}
       <audio ref={audioRef} preload="metadata" className="hidden" />
 
-      <div className="mx-auto flex max-w-3xl flex-col gap-2 border-t border-border bg-card px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.12)]">
+      <div className="mx-auto flex max-w-3xl flex-col gap-2 border-t border-border bg-card px-4 py-3 shadow-[var(--shadow-player)]">
         {/* 第一列:控制鈕 + 時間 + 進度條 */}
         <div className="flex items-center gap-3">
           <Button
@@ -302,7 +330,7 @@ export function AudioPlayer({
             onClick={handlePlayPause}
           >
             {isLoading ? (
-              <Loader2 className="animate-spin" />
+              <Loader2 className="animate-spin motion-reduce:animate-none" />
             ) : isPlaying ? (
               <Pause />
             ) : (
@@ -310,16 +338,47 @@ export function AudioPlayer({
             )}
           </Button>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label="調整語速"
-            onClick={handleRateCycle}
-            className="min-w-[3.75rem] tabular-nums"
-          >
-            <Gauge />
-            {rateLabel}
-          </Button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`語速 ${rateLabel},點擊調整`}
+                className="min-w-[3.75rem] tabular-nums"
+              >
+                <Gauge />
+                {rateLabel}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              side="top"
+              align="start"
+              className="w-28"
+              role="menu"
+            >
+              {PLAYBACK_RATES.map((rate, i) => {
+                const selected = i === rateIdx;
+                return (
+                  <PopoverClose key={rate} asChild>
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={selected}
+                      onClick={() => handleRateSelect(i)}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-sm px-2.5 py-1.5 text-sm tabular-nums outline-none transition-colors",
+                        "hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground",
+                        selected && "font-medium text-brand",
+                      )}
+                    >
+                      {`${rate}×`}
+                      {selected && <Check className="size-4" />}
+                    </button>
+                  </PopoverClose>
+                );
+              })}
+            </PopoverContent>
+          </Popover>
 
           <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
             {formatTime(positionMs)}
@@ -335,7 +394,7 @@ export function AudioPlayer({
             disabled={durationMs === 0}
             aria-label="播放進度"
             className={cn(
-              "h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-[var(--brand)]",
+              "h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-brand",
               durationMs === 0 && "cursor-not-allowed opacity-50",
             )}
           />
@@ -348,7 +407,7 @@ export function AudioPlayer({
         {/* 第二列:首播 loading / error 的克制提示(沿用 muted 風格)。 */}
         {isLoading && (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Loader2 className="size-3 animate-spin" />
+            <Loader2 className="size-3 animate-spin motion-reduce:animate-none" />
             合成中…(首次聆聽需稍候)
           </p>
         )}
