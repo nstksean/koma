@@ -40,8 +40,12 @@ export async function GET(
       },
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "TTS 失敗";
-    const status = message.includes("找不到") ? 404 : 500;
-    return new Response(message, { status });
+    // 對外固定文案,完整錯誤只記在 server 端(同 audio route 的洩漏防護)。
+    const isNotFound =
+      error instanceof Error && error.message.includes("找不到");
+    if (!isNotFound) console.error("[tts] timestamps route failed:", error);
+    return new Response(isNotFound ? "找不到章節" : "聽書服務暫時無法使用", {
+      status: isNotFound ? 404 : 500,
+    });
   }
 }

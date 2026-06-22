@@ -110,9 +110,14 @@ export async function GET(
       },
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "TTS 失敗";
-    // 找不到章節（getChapterView throw「找不到章節 idx=…」）→ 404,其餘 → 500。
-    const status = message.includes("找不到") ? 404 : 500;
-    return new Response(message, { status });
+    // 找不到章節/書（getChapterView throw「找不到…」）→ 404,其餘 → 500。
+    // 對外只回固定文案,完整錯誤記在 server 端 —— 內部訊息(Azure 細節、env 提示、
+    // fs 路徑)不可洩漏給 client。404 屬預期 client error,不記 log 避免噪音。
+    const isNotFound =
+      error instanceof Error && error.message.includes("找不到");
+    if (!isNotFound) console.error("[tts] audio route failed:", error);
+    return new Response(isNotFound ? "找不到章節" : "聽書服務暫時無法使用", {
+      status: isNotFound ? 404 : 500,
+    });
   }
 }
