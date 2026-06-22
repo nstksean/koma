@@ -72,6 +72,9 @@
   --ring: #7fbba2;
   --brand: #7fbba2;
   --brand-2: #e7ac5e;
+  /* 播放器列上緣陰影:跟主題走,不再硬寫純黑 rgba。暗色主題(含 Ember,經 :root
+     繼承)用較高不透明度才讀得出來。 */
+  --shadow-player: 0 -4px 16px rgba(0, 0, 0, 0.3);
 }
 
 /* ── 2. Ember Night 暖夜(dark)── */
@@ -122,6 +125,8 @@
   --ring: #c2762b;
   --brand: #c2762b;
   --brand-2: #5e8b7e;
+  /* 淨紙(light):淺底陰影更淡。 */
+  --shadow-player: 0 -4px 16px rgba(0, 0, 0, 0.08);
 }
 
 @layer base {
