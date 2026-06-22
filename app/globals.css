@@ -145,6 +145,20 @@
   line-height: var(--reader-line-height, 1.95);
 }
 
+/* TTS 聽書:當前朗讀字的卡拉OK高亮。底色/文字色用主題語意 token(三主題皆可讀:
+   霧綠/琥珀/紙琥珀 brand 配各主題 primary-foreground)。只動 color/background/radius
+   → 無 layout shift(不碰 font-size/margin,避免逐字推進時整段重排)。 */
+.tts-active {
+  background-color: var(--brand);
+  color: var(--primary-foreground);
+  border-radius: var(--radius-sm);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tts-active {
+    transition: background-color 120ms ease-out, color 120ms ease-out;
+  }
+}
+
 /* 品牌貓「睡著」的輕微呼吸(DESIGN Motion:章末貓蜷起睡著)。克制、緩慢。 */
 @keyframes koma-cat-breathe {
   0%,

@@ -14,6 +14,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ChapterDrawer } from "@/components/reader/chapter-drawer";
+import { ReaderContent } from "@/components/reader/reader-content";
+import { AudioPlayer } from "@/components/reader/audio-player";
 import { KomaCat } from "@/components/brand/koma-cat";
 import { saveProgressAction } from "@/app/actions";
 import { cn } from "@/lib/utils";
@@ -90,6 +92,15 @@ export function ReaderView({
   const [scrollPct, setScrollPct] = useState(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rafPending = useRef(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const ttsPlayingRef = useRef(false);
+
+  // 穩定 callback(身分恆定):只寫 ref,不需重建。傳 inline arrow 會每次 re-render
+  // 換身分,連帶讓 audio-player 的事件綁定 effect 反覆重掛 —— 之前正是這個「不穩定」
+  // 意外救了 listener 掛載時機的 bug;現已在 audio-player 用 `mounted` deps 正解。
+  const handleTtsPlayingChange = useCallback((playing: boolean) => {
+    ttsPlayingRef.current = playing;
+  }, []);
 
   const chapterHref = (n: number) =>
     `/read/${source}/${encodeURIComponent(sourceBookId)}/${n}`;
@@ -115,6 +126,8 @@ export function ReaderView({
   }, [initialScrollRatio, chapterId]);
 
   const flushProgress = useCallback(() => {
+    // 聽書播放中的 auto-scroll 不寫進度,避免「音檔位置」污染「閱讀位置」。
+    if (ttsPlayingRef.current) return;
     const max = document.documentElement.scrollHeight - window.innerHeight;
     const ratio = max > 0 ? window.scrollY / max : 0;
     void saveProgressAction(bookId, chapterId, ratio).catch(() => {});
@@ -161,8 +174,6 @@ export function ReaderView({
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prevIdx, nextIdx]);
-
-  const paragraphs = content.split("\n").filter(Boolean);
 
   return (
     <div className="min-h-dvh">
@@ -260,11 +271,7 @@ export function ReaderView({
         }
       >
         <h1 className="mb-6 text-xl font-semibold">{chapterTitle}</h1>
-        {paragraphs.map((p, i) => (
-          <p key={i} className="mb-5 indent-8">
-            {p}
-          </p>
-        ))}
+        <ReaderContent content={content} containerRef={contentRef} />
       </article>
 
       {/* 章末:貓蜷起睡著(DESIGN Motion §104)。每章結尾的休止符,克制出現一次。 */}
@@ -292,6 +299,19 @@ export function ReaderView({
           <span className="flex-1 text-center text-sm text-muted-foreground">已是最新章節</span>
         )}
       </nav>
+
+      {/* 固定播放器列預留空間,避免遮住章末貓 / 上下章。 */}
+      <div aria-hidden className="h-[calc(80px+env(safe-area-inset-bottom))]" />
+
+      {/* TTS 聽書播放器(portal 到 body)。key=chapterId → 換章自動重置。 */}
+      <AudioPlayer
+        key={chapterId}
+        source={source}
+        sourceBookId={sourceBookId}
+        idx={idx}
+        containerRef={contentRef}
+        onPlayingChange={handleTtsPlayingChange}
+      />
     </div>
   );
 }
