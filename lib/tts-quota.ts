@@ -12,7 +12,9 @@ import type { Auth, Role } from "@/lib/auth";
  *
  *   TTS_QUOTA_MEMBER（預設 30） / TTS_QUOTA_GUEST（預設 5）
  *
- * 把關點在兩個 TTS route：assertQuota 付費前擋,consumeQuota 合成成功後 +1。
+ * 把關點:送 Azure「之前」用 tryConsumeQuota 原子預扣(超額丟 QuotaError → 429);
+ * 合成失敗才 refundQuota 回補。預扣與檢查是同一條 SQL,消除 assert→consume 的
+ * TOCTOU 競態(併發不同章不會雙花/超量)。
  */
 
 export class QuotaError extends Error {
@@ -31,12 +33,15 @@ function numEnv(key: string, fallback: number): number {
 }
 
 /**
- * 是否強制額度。只有 production 強制;dev/test 一律放行,讓本機與測試免設定
- * auth/額度即可用(使用者要求:測試與環境不看權限)。要在本機驗 prod 行為可設
- * TTS_ENFORCE_QUOTA=1。
+ * 是否強制額度。**預設強制、僅顯式 opt-out**(Medium-2):任何未明確關閉的部署
+ * (含 preview/staging)都受額度保護,不再「非 prod 即裸奔免費供應付費合成」。
+ * 只有偵測到測試(NODE_ENV==="test")或顯式 TTS_DISABLE_QUOTA=1 才放行。
+ * TTS_ENFORCE_QUOTA 保留為向下相容的顯式強制旗標(預設本就強制,設了也只是 true)。
  */
 export function quotaEnforced(): boolean {
-  return process.env.NODE_ENV === "production" || process.env.TTS_ENFORCE_QUOTA === "1";
+  if (process.env.TTS_DISABLE_QUOTA === "1") return false;
+  if (process.env.NODE_ENV === "test") return false;
+  return true;
 }
 
 function limitFor(role: Role): number {
@@ -58,29 +63,43 @@ async function countToday(identity: string): Promise<number> {
   return rows[0]?.count ?? 0;
 }
 
-/** 付費前檢查：超額丟 QuotaError（route 對應 429）。admin 直接放行。回今日剩餘。 */
-export async function assertQuota(auth: Auth): Promise<number> {
+/**
+ * 原子預扣一格額度(送 Azure 付費合成「之前」呼叫)。admin 直接放行、不計。
+ *
+ * 用單條條件式 upsert 把「檢查上限 + 扣減」併成不可分割的一步:
+ *   INSERT(count=1) ON CONFLICT DO UPDATE SET count=count+1 WHERE count < limit
+ * 落帳成功(rowsAffected>0)回今日剩餘;被 WHERE 擋下(rowsAffected===0,已達上限)
+ * 丟 QuotaError。如此跨並發不同章也不會各自讀到舊值再雙花(消除 TOCTOU)。
+ */
+export async function tryConsumeQuota(auth: Auth): Promise<number> {
   const limit = limitFor(auth.role);
   if (limit === Infinity) return Infinity;
-  const used = await countToday(auth.identity);
-  if (used >= limit) throw new QuotaError(auth.role, limit);
-  return limit - used;
+
+  const day = today();
+  const res = await db.run(sql`
+    INSERT INTO tts_usage (identity, day, count) VALUES (${auth.identity}, ${day}, 1)
+    ON CONFLICT(identity, day) DO UPDATE SET count = count + 1
+    WHERE tts_usage.count < ${limit}
+  `);
+
+  if (res.rowsAffected === 0) {
+    // 已達上限:WHERE 把 upsert 擋下,沒有任何列被改 → 超額。
+    throw new QuotaError(auth.role, limit);
+  }
+
+  return limit - (await countToday(auth.identity));
 }
 
 /**
- * 合成成功後 +1。admin 不計。
- * ponytail: 並發下兩個不同章可能各自過了 assert 再各 +1,微幅超量;
- *   單人規模可接受。要硬上限再把 assert+consume 併成單條 UPDATE…WHERE count<limit。
+ * 回補一格額度(預扣後合成失敗時呼叫)。admin no-op。
+ * 加 `count > 0` 下界保護,避免任何競態把 count 壓成負數。
  */
-export async function consumeQuota(auth: Auth): Promise<void> {
+export async function refundQuota(auth: Auth): Promise<void> {
   if (auth.role === "admin") return;
-  await db
-    .insert(ttsUsage)
-    .values({ identity: auth.identity, day: today(), count: 1 })
-    .onConflictDoUpdate({
-      target: [ttsUsage.identity, ttsUsage.day],
-      set: { count: sql`${ttsUsage.count} + 1` },
-    });
+  await db.run(sql`
+    UPDATE tts_usage SET count = count - 1
+    WHERE identity = ${auth.identity} AND day = ${today()} AND count > 0
+  `);
 }
 
 export interface QuotaStatus {

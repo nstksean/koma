@@ -7,7 +7,7 @@ import path from "node:path";
 
 import { getChapterView } from "@/lib/books";
 import { pruneCache } from "@/lib/tts-cache";
-import { assertQuota, consumeQuota, quotaEnforced } from "@/lib/tts-quota";
+import { refundQuota, tryConsumeQuota, quotaEnforced } from "@/lib/tts-quota";
 import type { Auth } from "@/lib/auth";
 import { synthesizeAzureChapter } from "@/src/tts/azure-synthesize";
 import type { CharTimestamp } from "@/src/tts";
@@ -201,20 +201,18 @@ export async function getChapterAudioMeta(
     const hit = await readCache(dir, idx, textHash);
     if (hit) return hit; // cache 命中：不檢查、不消耗額度（重播/拖進度條免費）
 
-    // dev/test 不看權限(只 production 強制),本機與測試免設定 auth/額度即可用。
+    // 預設強制額度(只有 test / 顯式 opt-out 才放行,見 quotaEnforced)。
     const enforce = quotaEnforced();
-    // miss → 真要送 Azure 付費合成,先擋額度(超額丟 QuotaError → route 回 429)。
-    if (enforce) await assertQuota(auth);
-    const made = await synthesizeAndCache(dir, idx, content, voice, textHash);
-    // 合成成功才 +1;計額失敗不該讓已完成的合成 500(best-effort,記 log)。
-    if (enforce) {
-      try {
-        await consumeQuota(auth);
-      } catch (err) {
-        console.warn("[tts] 計額失敗(本次未計入):", err);
-      }
+    // miss → 真要送 Azure 付費合成。先「原子預扣」一格額度:檢查+扣減同一條 SQL,
+    // 消除 assert→consume 的 TOCTOU(超額丟 QuotaError → route 回 429)。
+    if (enforce) await tryConsumeQuota(auth);
+    try {
+      return await synthesizeAndCache(dir, idx, content, voice, textHash);
+    } catch (err) {
+      // 合成失敗 → 把預扣的額度退回(沒真的付費就不該扣),再把原錯往上拋。
+      if (enforce) await refundQuota(auth);
+      throw err;
     }
-    return made;
   })();
 
   inflight.set(key, task);
