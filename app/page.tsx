@@ -38,6 +38,17 @@ export default async function HomePage() {
             <span className="block text-xs text-muted-foreground">繼續閱讀</span>
             <span className="block truncate font-medium">{cont.book.title}</span>
             <span className="block truncate text-xs text-muted-foreground">{cont.chapterTitle}</span>
+            <span className="mt-1.5 flex items-center gap-2">
+              <span className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+                <span
+                  className="block h-full rounded-full bg-primary"
+                  style={{ width: `${Math.round(cont.scrollRatio * 100)}%` }}
+                />
+              </span>
+              <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                第 {cont.position} / {cont.totalChapters} 章
+              </span>
+            </span>
           </span>
           <ChevronRight className="size-5 shrink-0 text-muted-foreground" />
         </Link>

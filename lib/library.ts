@@ -21,6 +21,8 @@ export interface ContinueReading {
   readonly chapterIdx: number;
   readonly chapterTitle: string;
   readonly scrollRatio: number;
+  readonly position: number; // 第幾章(1-based 序位)
+  readonly totalChapters: number;
 }
 
 export async function addToLibrary(bookId: string): Promise<void> {
@@ -76,7 +78,7 @@ export async function listLibrary(): Promise<readonly LibraryItem[]> {
   }));
 }
 
-/** 全域「繼續上次閱讀」：最近一次有進度的書 + 章節。 */
+/** 全域「繼續上次閱讀」：最近一次有進度的書 + 章節(含 第X/Y章 序位)。 */
 export async function getContinueReading(): Promise<ContinueReading | null> {
   const [row] = await db
     .select({
@@ -91,5 +93,20 @@ export async function getContinueReading(): Promise<ContinueReading | null> {
     .where(eq(progress.userId, USER))
     .orderBy(desc(progress.updatedAt))
     .limit(1);
-  return row ?? null;
+  if (!row) return null;
+
+  // 序位:同書中 idx 不大於本章者的數量(= getChapterView 的 pos+1);total = 全章數。
+  const [counts] = await db
+    .select({
+      total: sql<number>`count(*)`,
+      position: sql<number>`sum(case when ${chapters.idx} <= ${row.chapterIdx} then 1 else 0 end)`,
+    })
+    .from(chapters)
+    .where(eq(chapters.bookId, row.book.id));
+
+  return {
+    ...row,
+    position: counts?.position ?? 1,
+    totalChapters: counts?.total ?? 1,
+  };
 }
