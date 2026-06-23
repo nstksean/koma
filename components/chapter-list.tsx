@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowDownAZ, ArrowUpAZ, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +18,8 @@ interface ChapterListProps {
   onNavigate?: () => void;
 }
 
-const RENDER_CAP = 300;
+// ponytail: fixed 100-chapter window; revisit only if someone wants a configurable size.
+const CHUNK = 100;
 
 export function ChapterList({
   source,
@@ -29,6 +30,7 @@ export function ChapterList({
 }: ChapterListProps) {
   const [query, setQuery] = useState("");
   const [asc, setAsc] = useState(true);
+  const [winStart, setWinStart] = useState(0);
 
   const filtered = useMemo(() => {
     const q = query.trim();
@@ -38,7 +40,12 @@ export function ChapterList({
     return [...list].sort((a, b) => (asc ? a.idx - b.idx : b.idx - a.idx));
   }, [chapters, query, asc]);
 
-  const shown = filtered.slice(0, RENDER_CAP);
+  // Reset to the first window whenever the result set changes shape.
+  useEffect(() => setWinStart(0), [query, asc]);
+
+  const windowed = filtered.length > CHUNK;
+  const start = winStart < filtered.length ? winStart : 0;
+  const shown = windowed ? filtered.slice(start, start + CHUNK) : filtered;
   const href = (idx: number) =>
     `/read/${source}/${encodeURIComponent(sourceBookId)}/${idx}`;
 
@@ -66,8 +73,35 @@ export function ChapterList({
 
       <p className="px-3 pb-1 text-xs text-muted-foreground">
         共 {filtered.length} 章
-        {filtered.length > RENDER_CAP ? `（顯示前 ${RENDER_CAP}，請用搜尋縮小）` : ""}
+        {windowed && shown.length > 0
+          ? `（${shown[0].idx}–${shown[shown.length - 1].idx}）`
+          : ""}
       </p>
+
+      {windowed && (
+        <div className="flex gap-1.5 overflow-x-auto px-3 pb-2">
+          {Array.from(
+            { length: Math.ceil(filtered.length / CHUNK) },
+            (_, i) => i * CHUNK,
+          ).map((s) => {
+            const a = filtered[s].idx;
+            const b = filtered[Math.min(s + CHUNK, filtered.length) - 1].idx;
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setWinStart(s)}
+                className={cn(
+                  "shrink-0 rounded-full border border-input px-2.5 py-1 text-xs transition-colors hover:bg-accent",
+                  start === s && "bg-accent font-medium",
+                )}
+              >
+                {a}–{b}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <ul className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
         {shown.map((c) => (
