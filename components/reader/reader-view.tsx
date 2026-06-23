@@ -102,12 +102,29 @@ export function ReaderView({
   // 穩定 callback(身分恆定):只寫 ref,不需重建。傳 inline arrow 會每次 re-render
   // 換身分,連帶讓 audio-player 的事件綁定 effect 反覆重掛 —— 之前正是這個「不穩定」
   // 意外救了 listener 掛載時機的 bug;現已在 audio-player 用 `mounted` deps 正解。
-  const handleTtsPlayingChange = useCallback((playing: boolean) => {
-    ttsPlayingRef.current = playing;
-  }, []);
+  const handleTtsPlayingChange = useCallback(
+    (playing: boolean) => {
+      ttsPlayingRef.current = playing;
+      // 聽書也算「讀到這裡」:開始播放即記下章節進度,讓首頁「繼續閱讀」追得上聽書。
+      // 用當下捲動比例(開播時即閱讀位置);TTS auto-scroll 後的位移仍不寫,維持互斥。
+      if (playing) {
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        const ratio = max > 0 ? window.scrollY / max : 0;
+        void saveProgressAction(bookId, chapterId, ratio).catch(() => {});
+      }
+    },
+    [bookId, chapterId],
+  );
 
   const chapterHref = (n: number) =>
     `/read/${source}/${encodeURIComponent(sourceBookId)}/${n}`;
+
+  // 章末自動續播:導到下一章(autoplay 交棒旗標由 audio-player 設,新章掛載即接著播)。
+  const goNext = useCallback(() => {
+    if (nextIdx === null) return;
+    router.push(chapterHref(nextIdx));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, source, sourceBookId, nextIdx]);
 
   // 內文實際套用的設定:掛載前(SSR + 首次 hydration)恆用 DEFAULT,與伺服器
   // 輸出一致;掛載後才換成使用者的 localStorage 設定。
@@ -315,8 +332,10 @@ export function ReaderView({
         bookSource={source}
         sourceBookId={sourceBookId}
         idx={idx}
+        nextIdx={nextIdx}
         containerRef={contentRef}
         onPlayingChange={handleTtsPlayingChange}
+        onRequestNext={goNext}
       />
     </div>
   );

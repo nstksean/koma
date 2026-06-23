@@ -12,7 +12,7 @@
  * 進度與高亮一律以 `audio.currentTime`(media time)為準,不縮放 timestamp。
  */
 
-import { Check, Gauge, Loader2, Pause, Play } from "lucide-react";
+import { Check, Gauge, Loader2, Moon, Pause, Play, Repeat } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -33,11 +33,45 @@ import {
 import { cn } from "@/lib/utils";
 import { useMounted } from "@/lib/use-mounted";
 import { canAutoPrefetch } from "@/lib/role-hint";
+import { parsePosMs, parseRateIdx } from "@/lib/audio-prefs";
 import { useTtsHighlight } from "./use-tts-highlight";
 
 /** 變速檔位(下限 1×、上限 2×,防變調由 preservesPitch 處理)。dropdown 直選,非循環。 */
 const PLAYBACK_RATES = [1, 1.25, 1.5, 1.75, 2] as const;
 const DEFAULT_VOICE = "zh-TW-HsiaoChenNeural";
+
+/** 語速持久化 key(全域偏好,跨書跨章);逐章播放位置另用 posStorageKey。 */
+const RATE_KEY = "koma:rate";
+/** 自動續播下一章偏好(全域)。 */
+const AUTONEXT_KEY = "koma:autonext";
+/** 跨章交棒旗標(sessionStorage):章末自動翻頁後,新章掛載即接著播。 */
+const AUTOPLAY_FLAG = "koma:autoplay";
+/** 睡眠定時選項(分鐘)。 */
+const SLEEP_OPTIONS = [15, 30, 60] as const;
+
+function loadAutoNext(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(AUTONEXT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** 從 localStorage 還原上次語速檔位(SSR / 隱私模式回退 1.0×)。 */
+function loadRateIdx(): number {
+  if (typeof window === "undefined") return 1;
+  try {
+    return parseRateIdx(window.localStorage.getItem(RATE_KEY), PLAYBACK_RATES.length);
+  } catch {
+    return 1;
+  }
+}
+
+/** 逐章「上次聽到哪」的本機 key(device-local,不進 DB)。 */
+function posStorageKey(source: string, slug: string, idx: number): string {
+  return `koma:pos:${source}:${slug}:${idx}`;
+}
 
 /**
  * 首播載入逾時。合成為逐段序列(900 code points/段),極長章 + 偶發重試最壞約 40s,
@@ -60,9 +94,11 @@ interface AudioPlayerProps {
   bookSource: string;
   sourceBookId: string; // = slug
   idx: number; // 章序;換章時 reader-view 用 key={chapterId} 重掛本元件
+  nextIdx: number | null; // 下一章序位(null = 最後一章,無法自動續播)
   voice?: string;
   containerRef: React.RefObject<HTMLDivElement | null>; // reader-content 內文容器
   onPlayingChange?: (playing: boolean) => void; // 給 reader-view 做進度互斥
+  onRequestNext?: () => void; // 章末自動續播:請 reader-view 導到下一章
 }
 
 /**
@@ -93,9 +129,11 @@ export function AudioPlayer({
   bookSource,
   sourceBookId,
   idx,
+  nextIdx,
   voice = DEFAULT_VOICE,
   containerRef,
   onPlayingChange,
+  onRequestNext,
 }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   // 是否已抓過 timestamp + 設過 audio.src(後續 play/pause 不重抓)。
@@ -104,11 +142,11 @@ export function AudioPlayer({
   const charsRef = useRef<readonly CharTimestamp[]>([]); // 點字 seek 用:找 charIndex→startMs
   // 指向最新 seekAndPlayToChar(避免把它直接傳進 hook 造成定義循環依賴)。
   const seekRef = useRef<(charIndex: number) => void>(() => {});
-  // 最新語速檔位:ensureLoaded 載入時從 ref 讀(而非 capture rateIdx),
-  // 避免換速後 callback 全churn + 載入瞬間回退 1× 的競態。
-  const rateIdxRef = useRef(1);
   // 在飛的 timestamps fetch:換章/卸載時 abort,避免 resolve 進已卸載元件。
   const abortRef = useRef<AbortController | null>(null);
+
+  // 逐章播放位置的本機 key(props 對單一實例固定;換章由 key={chapterId} 重掛)。
+  const posKey = posStorageKey(bookSource, sourceBookId, idx);
 
   const mounted = useMounted();
   const [status, setStatus] = useState<PlayerStatus>("idle");
@@ -117,7 +155,47 @@ export function AudioPlayer({
 
   const [durationMs, setDurationMs] = useState(0);
   const [positionMs, setPositionMs] = useState(0); // 進度條/時間顯示(非每幀,用 timeupdate)
-  const [rateIdx, setRateIdx] = useState(1); // 預設 1.0×
+  // 語速:從 localStorage 還原上次選擇,跨章/重開都記得(ainowcast 的播放器其實沒存,
+  // 每次重置成 1×;這裡直接做持久化)。ref 供 ensureLoaded 載入時讀最新檔位避免競態。
+  const [rateIdx, setRateIdx] = useState(loadRateIdx);
+  const rateIdxRef = useRef(rateIdx);
+
+  // 自動續播下一章(全域偏好)。autoNext / nextIdx / onRequestNext 用 ref 餵 onEnded,
+  // 避免它們變動就重掛 timeupdate/ended listener(ref 在下方 effect 同步,不在 render 寫)。
+  const [autoNext, setAutoNext] = useState(loadAutoNext);
+  const autoNextRef = useRef(autoNext);
+  const nextIdxRef = useRef(nextIdx);
+  const onRequestNextRef = useRef(onRequestNext);
+  useEffect(() => {
+    autoNextRef.current = autoNext;
+    nextIdxRef.current = nextIdx;
+    onRequestNextRef.current = onRequestNext;
+  });
+  // 睡眠定時:sleepMin = 選的分鐘數(供 UI 高亮);sleepEndsAt = 截止 wall-clock ms
+  // (倒數來源);sleepRemainingMs = 顯示用剩餘。三者皆 null/0 = 關閉。
+  const [sleepMin, setSleepMin] = useState<number | null>(null);
+  const [sleepEndsAt, setSleepEndsAt] = useState<number | null>(null);
+  const [sleepRemainingMs, setSleepRemainingMs] = useState(0);
+
+  /** 存下這次聽到哪(本機,逐章)。currentTime<=0 不存,避免覆蓋成 0。 */
+  const savePos = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio || audio.currentTime <= 0) return;
+    try {
+      window.localStorage.setItem(posKey, String(Math.floor(audio.currentTime * 1000)));
+    } catch {
+      /* 隱私模式 / 配額滿:忽略,純屬本機便利功能 */
+    }
+  }, [posKey]);
+
+  /** 章末播畢:清掉位置,下次從頭播。 */
+  const clearPos = useCallback(() => {
+    try {
+      window.localStorage.removeItem(posKey);
+    } catch {
+      /* 忽略 */
+    }
+  }, [posKey]);
 
   // 穩定包裝:hook 的點字委派一律呼叫 seekRef.current(最新 seekAndPlayToChar)。
   const stableSeek = useCallback(
@@ -129,6 +207,17 @@ export function AudioPlayer({
     audioRef,
     onSeekToChar: stableSeek,
   });
+
+  /** 暫停 + 收尾(停高亮、通知互斥、存位置)。手動暫停與睡眠定時共用。 */
+  const pausePlayback = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.pause();
+    stop();
+    setStatus("paused");
+    onPlayingChange?.(false);
+    savePos();
+  }, [stop, onPlayingChange, savePos]);
 
   // <audio> 生命週期事件:進度顯示、結束處理。
   // 用 timeupdate(~4Hz)更新進度條 state —— 高亮另走 rAF,兩者刻意分離。
@@ -142,8 +231,19 @@ export function AudioPlayer({
     const onTime = () => setPositionMs(audio.currentTime * 1000);
     const onEnded = () => {
       stop();
-      setStatus("paused");
       onPlayingChange?.(false);
+      clearPos(); // 播畢:本章下次從頭
+      // 自動續播:還有下一章就交棒給 reader-view 導頁,新章掛載即接著播。
+      if (autoNextRef.current && nextIdxRef.current !== null) {
+        try {
+          window.sessionStorage.setItem(AUTOPLAY_FLAG, "1");
+        } catch {
+          /* 忽略:擋下只是不自動播,使用者點一下即可 */
+        }
+        onRequestNextRef.current?.();
+        return;
+      }
+      setStatus("paused");
     };
     audio.addEventListener("timeupdate", onTime);
     audio.addEventListener("ended", onEnded);
@@ -151,7 +251,7 @@ export function AudioPlayer({
       audio.removeEventListener("timeupdate", onTime);
       audio.removeEventListener("ended", onEnded);
     };
-  }, [mounted, stop, onPlayingChange]);
+  }, [mounted, stop, onPlayingChange, clearPos]);
 
   // 卸載(換章/離開閱讀器):暫停音檔並停 rAF。高亮 class 清除由 hook 的
   // cleanup 負責;此處只管音檔與播放狀態通知。
@@ -163,6 +263,7 @@ export function AudioPlayer({
     if (!audio) return;
     return () => {
       abortRef.current?.abort(); // 取消在飛的 timestamps fetch
+      savePos(); // 換章/離開:存下聽到哪
       audio.pause();
       stop();
       onPlayingChange?.(false);
@@ -226,6 +327,20 @@ export function AudioPlayer({
         audio.preservesPitch = true; // 變速防變調
         audio.playbackRate = PLAYBACK_RATES[rateIdxRef.current]; // 讀最新檔位,非 capture
         loadedRef.current = true;
+        // 還原上次聽到的位置(逐章,本機)。在 setStatus("ready") 前 await seek 完成,
+        // 否則 loadAndPlay 會先從 0 播再跳,出現一小段雜音。
+        let savedRaw: string | null = null;
+        try {
+          savedRaw = window.localStorage.getItem(posKey);
+        } catch {
+          /* 忽略 */
+        }
+        const savedMs = parsePosMs(savedRaw, payload.durationMs);
+        if (savedMs > 0) {
+          await whenSeekable(audio);
+          audio.currentTime = savedMs / 1000;
+          setPositionMs(savedMs);
+        }
         setStatus("ready"); // 合成完、未播:播放鈕轉可按(loadAndPlay 隨後覆寫為 playing)
         return true;
       } catch {
@@ -246,7 +361,7 @@ export function AudioPlayer({
         loadingRef.current = false;
       }
     },
-    [bookSource, sourceBookId, idx, voice, setChars, onPlayingChange],
+    [bookSource, sourceBookId, idx, voice, posKey, setChars, onPlayingChange],
   );
 
   /** 播放鈕:確保載入 → 從目前位置播(首播為 0)。 */
@@ -263,6 +378,24 @@ export function AudioPlayer({
       setStatus("error");
       setErrorMsg("播放失敗,請再試一次。");
       onPlayingChange?.(false);
+    }
+  }, [ensureLoaded, start, onPlayingChange]);
+
+  /**
+   * 章末自動續播:載入新章 → 嘗試直接播。與 loadAndPlay 差別在於 play() 被 autoplay
+   * policy 擋下時「靜默」退回 ready(不彈錯誤),使用者點一下即播 —— 屬漸進增強。
+   */
+  const autoContinuePlay = useCallback(async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (!(await ensureLoaded(true))) return; // 合成失敗仍會自己顯示錯誤
+    try {
+      await audio.play();
+      setStatus("playing");
+      onPlayingChange?.(true);
+      start();
+    } catch {
+      setStatus("ready"); // autoplay 被擋:不視為錯誤
     }
   }, [ensureLoaded, start, onPlayingChange]);
 
@@ -307,6 +440,20 @@ export function AudioPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted]);
 
+  // 章末自動續播交棒:上一章 onEnded 設了旗標 → 新章掛載即接著播(消費後即清旗標)。
+  useEffect(() => {
+    if (!mounted) return;
+    let armed = false;
+    try {
+      armed = window.sessionStorage.getItem(AUTOPLAY_FLAG) === "1";
+      if (armed) window.sessionStorage.removeItem(AUTOPLAY_FLAG);
+    } catch {
+      /* 忽略 */
+    }
+    if (armed) void autoContinuePlay();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted]);
+
   // 讓 hook 的點字委派(stableSeek)呼叫到最新的 seekAndPlayToChar。
   // 在 effect 內更新 ref(不在 render 階段寫 ref);stableSeek 只在使用者點字
   // 事件時觸發,屆時 effect 早已跑完,ref 必為最新。
@@ -320,10 +467,7 @@ export function AudioPlayer({
     if (status === "loading") return; // 合成中:忽略重複點擊
 
     if (status === "playing") {
-      audio.pause();
-      stop();
-      setStatus("paused");
-      onPlayingChange?.(false);
+      pausePlayback(); // 暫停 + 存位置
       return;
     }
 
@@ -344,12 +488,66 @@ export function AudioPlayer({
       setErrorMsg("播放失敗,請再試一次。");
       onPlayingChange?.(false);
     }
-  }, [status, stop, start, loadAndPlay, onPlayingChange]);
+  }, [status, start, loadAndPlay, onPlayingChange, pausePlayback]);
+
+  // 背景化 / 切走分頁時也存一次位置(行動裝置最常見的「離開」,卸載未必觸發)。
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === "hidden") savePos();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => document.removeEventListener("visibilitychange", onHide);
+  }, [savePos]);
+
+  // 睡眠定時:每秒更新剩餘;到點暫停並關閉(走 wall-clock,背景化也準)。
+  useEffect(() => {
+    if (sleepEndsAt === null) {
+      setSleepRemainingMs(0);
+      return;
+    }
+    const tick = () => {
+      const left = sleepEndsAt - Date.now();
+      if (left <= 0) {
+        setSleepMin(null);
+        setSleepEndsAt(null);
+        pausePlayback();
+      } else {
+        setSleepRemainingMs(left);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [sleepEndsAt, pausePlayback]);
+
+  /** 切換「自動續播下一章」並持久化。 */
+  const handleToggleAutoNext = useCallback(() => {
+    setAutoNext((on) => {
+      const next = !on;
+      try {
+        window.localStorage.setItem(AUTONEXT_KEY, next ? "1" : "0");
+      } catch {
+        /* 忽略 */
+      }
+      return next;
+    });
+  }, []);
+
+  /** 選睡眠定時(分鐘;null = 關閉)。 */
+  const handleSleepSelect = useCallback((min: number | null) => {
+    setSleepMin(min);
+    setSleepEndsAt(min === null ? null : Date.now() + min * 60_000);
+  }, []);
 
   /** 從 dropdown 直選某檔位,即時套用到 audio(暫停/播放中皆可)。 */
   const handleRateSelect = useCallback((next: number) => {
     setRateIdx(next);
     rateIdxRef.current = next; // 同步 ref,供 ensureLoaded 載入時讀最新檔位
+    try {
+      window.localStorage.setItem(RATE_KEY, String(next)); // 持久化:下次重開記得
+    } catch {
+      /* 隱私模式 / 配額滿:忽略,語速仍即時生效只是不持久 */
+    }
     const audio = audioRef.current;
     if (audio) {
       audio.preservesPitch = true;
@@ -374,6 +572,8 @@ export function AudioPlayer({
   const isPlaying = status === "playing";
   const isError = status === "error";
   const rateLabel = `${PLAYBACK_RATES[rateIdx]}×`;
+  const sleepActive = sleepEndsAt !== null;
+  const nightActive = sleepActive || autoNext; // 任一夜讀選項開啟 → 月亮鈕染色
 
   if (!mounted) return null;
 
@@ -440,6 +640,70 @@ export function AudioPlayer({
                   </PopoverClose>
                 );
               })}
+            </PopoverContent>
+          </Popover>
+
+          {/* 夜讀選項:睡眠定時 + 自動續播下一章(貓陪你夜讀)。 */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={
+                  sleepActive
+                    ? `睡眠定時剩 ${formatTime(sleepRemainingMs)},點擊調整夜讀選項`
+                    : "夜讀選項:睡眠定時、自動續播"
+                }
+                className={cn("gap-1.5 tabular-nums", nightActive && "text-brand")}
+              >
+                <Moon />
+                {sleepActive && (
+                  <span className="text-xs">{formatTime(sleepRemainingMs)}</span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent side="top" align="start" className="w-48">
+              <p className="px-2.5 pb-1 text-xs font-medium text-muted-foreground">
+                睡眠定時
+              </p>
+              {[null, ...SLEEP_OPTIONS].map((min) => {
+                const selected = sleepMin === min;
+                return (
+                  <button
+                    key={min ?? "off"}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={selected}
+                    onClick={() => handleSleepSelect(min)}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-sm px-2.5 py-1.5 text-sm tabular-nums outline-none transition-colors",
+                      "hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground",
+                      selected && "font-medium text-brand",
+                    )}
+                  >
+                    {min === null ? "關閉" : `${min} 分`}
+                    {selected && <Check className="size-4" />}
+                  </button>
+                );
+              })}
+
+              <div className="my-1 border-t border-border" />
+
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={autoNext}
+                onClick={handleToggleAutoNext}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-sm outline-none transition-colors",
+                  "hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground",
+                  autoNext && "font-medium text-brand",
+                )}
+              >
+                <Repeat className="size-4 shrink-0" />
+                <span className="flex-1 text-left">自動續播下一章</span>
+                {autoNext && <Check className="size-4 shrink-0" />}
+              </button>
             </PopoverContent>
           </Popover>
 
