@@ -49,6 +49,23 @@ const AUTOPLAY_FLAG = "koma:autoplay";
 /** 睡眠定時選項(分鐘)。 */
 const SLEEP_OPTIONS = [15, 30, 60] as const;
 
+/** 使用者面提示文案(集中管理,避免重複字串漂移)。 */
+const TTS_MESSAGES = {
+  synthFailed: "聽書合成失敗,請稍後再試。",
+  playFailed: "播放失敗,請再試一次。",
+  quotaExhausted: "今日聽書額度已用完,請解鎖或明日再試。",
+} as const;
+
+/**
+ * 變速防變調:現代瀏覽器用 `preservesPitch`,舊版 iOS Safari 用 `webkitPreservesPitch`
+ * 前綴版 —— 不設前綴版,舊 iOS 變速會變調(chipmunk)。iOS 為優先平台,兩個都設。
+ */
+function setPreservesPitch(audio: HTMLAudioElement): void {
+  audio.preservesPitch = true;
+  (audio as unknown as { webkitPreservesPitch?: boolean }).webkitPreservesPitch =
+    true;
+}
+
 function loadAutoNext(): boolean {
   if (typeof window === "undefined") return false;
   try {
@@ -144,6 +161,9 @@ export function AudioPlayer({
   const seekRef = useRef<(charIndex: number) => void>(() => {});
   // 在飛的 timestamps fetch:換章/卸載時 abort,避免 resolve 進已卸載元件。
   const abortRef = useRef<AbortController | null>(null);
+  // 預合成(prefetch)進行中時使用者按了播放:記下意圖,合成就緒即自動續播
+  // (否則按播放會被 status==="loading" 守門吞掉,使用者得再按一次)。
+  const pendingPlayRef = useRef(false);
 
   // 逐章播放位置的本機 key(props 對單一實例固定;換章由 key={chapterId} 重掛)。
   const posKey = posStorageKey(bookSource, sourceBookId, idx);
@@ -219,6 +239,22 @@ export function AudioPlayer({
     savePos();
   }, [stop, onPlayingChange, savePos]);
 
+  /** 從已就緒的音檔播放(play→啟動高亮);play 失敗顯示錯誤。多處共用。 */
+  const playLoaded = useCallback(async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    try {
+      await audio.play();
+      setStatus("playing");
+      onPlayingChange?.(true);
+      start();
+    } catch {
+      setStatus("error");
+      setErrorMsg(TTS_MESSAGES.playFailed);
+      onPlayingChange?.(false);
+    }
+  }, [start, onPlayingChange]);
+
   // <audio> 生命週期事件:進度顯示、結束處理。
   // 用 timeupdate(~4Hz)更新進度條 state —— 高亮另走 rAF,兩者刻意分離。
   // ⚠️ `mounted` 必須在 deps:`<audio>` 在 mounted=false 的首 render 不存在
@@ -243,6 +279,7 @@ export function AudioPlayer({
         onRequestNextRef.current?.();
         return;
       }
+      setPositionMs(audio.duration * 1000); // 歸位到章末,否則進度條停在差一點
       setStatus("paused");
     };
     audio.addEventListener("timeupdate", onTime);
@@ -310,7 +347,7 @@ export function AudioPlayer({
             error?: string;
           } | null;
           setStatus("error");
-          setErrorMsg(body?.error ?? "今日聽書額度已用完,請解鎖或明日再試。");
+          setErrorMsg(body?.error ?? TTS_MESSAGES.quotaExhausted);
           setQuotaHit(true);
           onPlayingChange?.(false);
           return false;
@@ -324,7 +361,7 @@ export function AudioPlayer({
         setDurationMs(payload.durationMs);
         // 此時 server 已完成合成,音檔秒回。
         audio.src = ttsAudioUrl(bookSource, sourceBookId, idx, voice);
-        audio.preservesPitch = true; // 變速防變調
+        setPreservesPitch(audio);
         audio.playbackRate = PLAYBACK_RATES[rateIdxRef.current]; // 讀最新檔位,非 capture
         loadedRef.current = true;
         // 還原上次聽到的位置(逐章,本機)。在 setStatus("ready") 前 await seek 完成,
@@ -350,7 +387,7 @@ export function AudioPlayer({
         // 唯使用者主動觸發才彈錯誤提示,避免背景失敗驚動沒在看的使用者。
         if (userInitiated) {
           setStatus("error");
-          setErrorMsg("聽書合成失敗,請稍後再試。");
+          setErrorMsg(TTS_MESSAGES.synthFailed);
           onPlayingChange?.(false);
         } else {
           setStatus("idle");
@@ -366,20 +403,9 @@ export function AudioPlayer({
 
   /** 播放鈕:確保載入 → 從目前位置播(首播為 0)。 */
   const loadAndPlay = useCallback(async () => {
-    const audio = audioRef.current;
-    if (!audio) return;
     if (!(await ensureLoaded(true))) return;
-    try {
-      await audio.play();
-      setStatus("playing");
-      onPlayingChange?.(true);
-      start();
-    } catch {
-      setStatus("error");
-      setErrorMsg("播放失敗,請再試一次。");
-      onPlayingChange?.(false);
-    }
-  }, [ensureLoaded, start, onPlayingChange]);
+    await playLoaded();
+  }, [ensureLoaded, playLoaded]);
 
   /**
    * 章末自動續播:載入新章 → 嘗試直接播。與 loadAndPlay 差別在於 play() 被 autoplay
@@ -420,7 +446,7 @@ export function AudioPlayer({
         refresh(); // 立即把高亮挪到該字
       } catch {
         setStatus("error");
-        setErrorMsg("播放失敗,請再試一次。");
+        setErrorMsg(TTS_MESSAGES.playFailed);
         onPlayingChange?.(false);
       }
     },
@@ -436,7 +462,13 @@ export function AudioPlayer({
   useEffect(() => {
     if (!mounted) return;
     if (!canAutoPrefetch()) return;
-    void ensureLoaded();
+    void ensureLoaded().then((ok) => {
+      // 合成期間使用者按了播放(handlePlayPause 在 loading 時記下意圖)→ 就緒即續播。
+      if (ok && pendingPlayRef.current) {
+        pendingPlayRef.current = false;
+        void playLoaded();
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted]);
 
@@ -464,7 +496,11 @@ export function AudioPlayer({
   const handlePlayPause = useCallback(async () => {
     const audio = audioRef.current;
     if (!audio) return;
-    if (status === "loading") return; // 合成中:忽略重複點擊
+    // 合成中(多為 admin 開章 prefetch):記下播放意圖,就緒後自動續播,不再吞掉這一點。
+    if (status === "loading") {
+      pendingPlayRef.current = true;
+      return;
+    }
 
     if (status === "playing") {
       pausePlayback(); // 暫停 + 存位置
@@ -478,17 +514,8 @@ export function AudioPlayer({
     }
 
     // 後續 resume:不重抓。
-    try {
-      await audio.play();
-      setStatus("playing");
-      onPlayingChange?.(true);
-      start();
-    } catch {
-      setStatus("error");
-      setErrorMsg("播放失敗,請再試一次。");
-      onPlayingChange?.(false);
-    }
-  }, [status, start, loadAndPlay, onPlayingChange, pausePlayback]);
+    await playLoaded();
+  }, [status, loadAndPlay, playLoaded, pausePlayback]);
 
   // 背景化 / 切走分頁時也存一次位置(行動裝置最常見的「離開」,卸載未必觸發)。
   useEffect(() => {
@@ -550,7 +577,7 @@ export function AudioPlayer({
     }
     const audio = audioRef.current;
     if (audio) {
-      audio.preservesPitch = true;
+      setPreservesPitch(audio);
       audio.playbackRate = PLAYBACK_RATES[next];
     }
   }, []);
@@ -561,9 +588,15 @@ export function AudioPlayer({
       const audio = audioRef.current;
       if (!audio) return;
       const valueMs = Number(e.target.value);
-      audio.currentTime = valueMs / 1000;
-      setPositionMs(valueMs);
-      refresh();
+      setPositionMs(valueMs); // 視覺立即跟手
+      // 守門:metadata 未載入(readyState=0)時設 currentTime 會被打回 0,
+      // 等 seekable 再套用(與 seekAndPlayToChar 同模式)。
+      const apply = () => {
+        audio.currentTime = valueMs / 1000;
+        refresh();
+      };
+      if (audio.readyState >= 1) apply();
+      else void whenSeekable(audio).then(apply);
     },
     [refresh],
   );

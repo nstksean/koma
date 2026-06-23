@@ -68,7 +68,11 @@ export function useTtsHighlight({
     const topEdge = vh * SCROLL_EDGE_RATIO;
     const bottomEdge = vh * (1 - SCROLL_EDGE_RATIO);
     if (rect.top < topEdge || rect.bottom > bottomEdge) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      // 尊重 prefers-reduced-motion:減動偏好下用 auto(瞬移)而非 smooth(平滑捲動)。
+      const reduce = window.matchMedia?.(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+      el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
     }
   }, []);
 
