@@ -1,6 +1,7 @@
 import { getChapterAudioMeta } from "@/lib/tts";
 import { resolveAuth } from "@/lib/auth";
 import { QuotaError } from "@/lib/tts-quota";
+import { checkTtsRate } from "@/lib/tts-rate-limit";
 import type { TimestampsPayload } from "@/src/tts";
 import { parseTtsParams } from "../parse-params";
 
@@ -19,6 +20,9 @@ export async function GET(
 ): Promise<Response> {
   const parsed = parseTtsParams(await ctx.params, req.url);
   if (!parsed.ok) return parsed.response;
+  // 額度外第二道閘(與 audio route 共用同一身分計數,見 lib/tts-rate-limit)。
+  const rate = checkTtsRate(req);
+  if (!rate.ok) return rate.response;
   const { bookSource, slug, idxNum, voice } = parsed.params;
   const auth = resolveAuth(req);
 
