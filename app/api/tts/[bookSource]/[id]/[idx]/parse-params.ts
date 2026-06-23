@@ -82,10 +82,12 @@ export function parseTtsParams(
     return badRequest("bad id");
   }
 
-  const idxNum = Number(idx);
-  if (!Number.isInteger(idxNum) || idxNum < 0) {
+  // 只收純十進位自然數字串:Number("")/Number(" ")/Number("1e3") 會悄悄強制轉型
+  // (空字串→0),故用正則擋在 Number() 之前,避免空/畸形 idx 被當成第 0 章。
+  if (!/^\d+$/.test(idx)) {
     return badRequest("bad idx");
   }
+  const idxNum = Number(idx);
 
   const voiceParam = new URL(requestUrl).searchParams.get("voice");
   const voice =
