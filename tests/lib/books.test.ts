@@ -73,7 +73,9 @@ describe("getOrFetchBook", () => {
     expect(book.title).toBe("鬥破蒼穹");
     expect(book.latestChapterTitle).toBe("第3章");
     expect(chs.map((c) => c.idx)).toEqual([1, 2, 3]); // 依 idx 遞增
-    expect(chs.every((c) => c.content === null)).toBe(true); // 目錄階段不抓內文
+    // 目錄階段不抓內文：目錄回傳已不含 content（projection），直接查 DB 驗證。
+    const stored = await db.select().from(chapters);
+    expect(stored.every((c) => c.content === null)).toBe(true);
   });
 
   it("命中且未過期 → 直接讀 DB，不打來源站", async () => {
@@ -152,9 +154,11 @@ describe("getOrFetchBook", () => {
     expect(book.fetchedAt.getTime()).toBeGreaterThan(stale.getTime());
 
     expect(chs.map((c) => c.idx)).toEqual([1, 2, 3]);
-    const ch1 = chs.find((c) => c.idx === 1)!;
-    expect(ch1.content).toBe("已快取內文"); // 關鍵：不被覆寫
-    expect(chs.find((c) => c.idx === 2)!.content).toBeNull(); // 新補的章
+    // 目錄回傳不含 content（projection）；改查 DB 驗「不覆寫已快取內文、新章為 null」。
+    const [c1row] = await db.select().from(chapters).where(eq(chapters.idx, 1));
+    expect(c1row.content).toBe("已快取內文"); // 關鍵：不被覆寫
+    const [c2row] = await db.select().from(chapters).where(eq(chapters.idx, 2));
+    expect(c2row.content).toBeNull(); // 新補的章
   });
 
 });
@@ -209,6 +213,78 @@ describe("getChapterView", () => {
     expect(view.content).toBe("深連結內文");
     expect(view.prevIdx).toBe(1);
     expect(view.nextIdx).toBe(3);
+  });
+
+  it("第一章 → prevIdx 為 null、nextIdx 指向下一章、position=1", async () => {
+    await seedFreshBook();
+    fakeAdapter.getChapterContent.mockResolvedValue("內文");
+    const view = await getChapterView(SOURCE, SLUG, 1);
+    expect(view.prevIdx).toBeNull();
+    expect(view.nextIdx).toBe(2);
+    expect(view.position).toBe(1);
+    expect(view.totalChapters).toBe(3);
+  });
+
+  it("最後一章 → nextIdx 為 null、position=total", async () => {
+    await seedFreshBook();
+    fakeAdapter.getChapterContent.mockResolvedValue("內文");
+    const view = await getChapterView(SOURCE, SLUG, 3);
+    expect(view.prevIdx).toBe(2);
+    expect(view.nextIdx).toBeNull();
+    expect(view.position).toBe(3);
+    expect(view.totalChapters).toBe(3);
+  });
+
+  it("idx 非連續（缺號）→ prev/next 取相鄰實存 idx、position 為序位非 idx", async () => {
+    await db.insert(books).values({
+      id: "bgap",
+      source: SOURCE,
+      sourceBookId: SLUG,
+      title: "缺號書",
+      author: "a",
+      category: "",
+      cover: null,
+      intro: null,
+      latestChapterTitle: "第50章",
+      fetchedAt: new Date(),
+    });
+    // idx 跳號：10、20、50。對 idx=20：prev=10、next=50、position=2/3。
+    await db.insert(chapters).values([
+      { id: "g1", bookId: "bgap", idx: 10, title: "第10章", sourceUrl: "u10", content: "c10", fetchedAt: new Date() },
+      { id: "g2", bookId: "bgap", idx: 20, title: "第20章", sourceUrl: "u20", content: "c20", fetchedAt: new Date() },
+      { id: "g3", bookId: "bgap", idx: 50, title: "第50章", sourceUrl: "u50", content: "c50", fetchedAt: new Date() },
+    ]);
+    const view = await getChapterView(SOURCE, SLUG, 20);
+    expect(view.content).toBe("c20"); // 只回目標章內文
+    expect(view.prevIdx).toBe(10);
+    expect(view.nextIdx).toBe(50);
+    expect(view.position).toBe(2);
+    expect(view.totalChapters).toBe(3);
+    // 解耦驗證：目標章內文與相鄰章無關，不受其他章 content 干擾。
+    expect(view.chapter.idx).toBe(20);
+  });
+
+  it("單章書 → prev/next 皆 null、position=total=1", async () => {
+    await db.insert(books).values({
+      id: "bsolo",
+      source: SOURCE,
+      sourceBookId: SLUG,
+      title: "單章書",
+      author: "a",
+      category: "",
+      cover: null,
+      intro: null,
+      latestChapterTitle: "唯一章",
+      fetchedAt: new Date(),
+    });
+    await db.insert(chapters).values({
+      id: "s1", bookId: "bsolo", idx: 1, title: "唯一章", sourceUrl: "us", content: "only", fetchedAt: new Date(),
+    });
+    const view = await getChapterView(SOURCE, SLUG, 1);
+    expect(view.prevIdx).toBeNull();
+    expect(view.nextIdx).toBeNull();
+    expect(view.position).toBe(1);
+    expect(view.totalChapters).toBe(1);
   });
 
   it("章節 idx 不存在 → 丟錯", async () => {

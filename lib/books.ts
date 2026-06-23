@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gt, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { books, chapters, type Book, type Chapter } from "@/db/schema";
 import { getAdapter } from "@/src/sources";
@@ -10,9 +10,17 @@ import { resolveTitle } from "./title-overrides";
 const BOOK_TTL_MS = 6 * 60 * 60 * 1000; // 6h
 const INSERT_CHUNK = 200;
 
+/** 目錄列：不含 content（整章內文，數 KB~數十 KB），只取定位需要的欄位。 */
+export interface ChapterMeta {
+  readonly id: string;
+  readonly idx: number;
+  readonly title: string;
+  readonly sourceUrl: string;
+}
+
 export interface BookWithChapters {
   readonly book: Book;
-  readonly chapters: readonly Chapter[];
+  readonly chapters: readonly ChapterMeta[];
 }
 
 export interface ChapterView {
@@ -39,8 +47,18 @@ async function findBook(source: string, sourceBookId: string): Promise<Book | un
   return row;
 }
 
-async function loadChapters(bookId: string): Promise<Chapter[]> {
-  return db.select().from(chapters).where(eq(chapters.bookId, bookId)).orderBy(asc(chapters.idx));
+/** 載入目錄（projection：不含 content，避免整本內文 over-fetch）。 */
+async function loadChapters(bookId: string): Promise<ChapterMeta[]> {
+  return db
+    .select({
+      id: chapters.id,
+      idx: chapters.idx,
+      title: chapters.title,
+      sourceUrl: chapters.sourceUrl,
+    })
+    .from(chapters)
+    .where(eq(chapters.bookId, bookId))
+    .orderBy(asc(chapters.idx));
 }
 
 /**
@@ -141,15 +159,13 @@ export async function getChapterView(
     book = (await getOrFetchBook(source, sourceBookId)).book;
   }
 
-  let rows = await loadChapters(book.id);
-  if (rows.length === 0 && adapter) {
+  // 目標章單獨取（含 content）；不存在 → 若有 adapter（如深連結尚未補目錄）補抓一次再試。
+  let chapter = await findChapter(book.id, idx);
+  if (!chapter && adapter) {
     await getOrFetchBook(source, sourceBookId);
-    rows = await loadChapters(book.id);
+    chapter = await findChapter(book.id, idx);
   }
-
-  const pos = rows.findIndex((c) => c.idx === idx);
-  if (pos === -1) throw new Error(`找不到章節 idx=${idx}`);
-  const chapter = rows[pos];
+  if (!chapter) throw new Error(`找不到章節 idx=${idx}`);
 
   let content = chapter.content;
   if (!content) {
@@ -162,14 +178,64 @@ export async function getChapterView(
       .where(eq(chapters.id, chapter.id));
   }
 
+  // prev/next/position/total 全用 SQL 算，避免把整本目錄載進記憶體再算。
+  const [prevIdx, nextIdx, { position, totalChapters }] = await Promise.all([
+    adjacentIdx(book.id, idx, "prev"),
+    adjacentIdx(book.id, idx, "next"),
+    countPosition(book.id, idx),
+  ]);
+
+  return { book, chapter, content, prevIdx, nextIdx, position, totalChapters };
+}
+
+/** 取單一章節（完整列，含 content）。 */
+async function findChapter(
+  bookId: string,
+  idx: number,
+): Promise<Chapter | undefined> {
+  const [row] = await db
+    .select()
+    .from(chapters)
+    .where(and(eq(chapters.bookId, bookId), eq(chapters.idx, idx)))
+    .limit(1);
+  return row;
+}
+
+/** 相鄰章 idx：prev = 小於 target 的最大 idx；next = 大於 target 的最小 idx。 */
+async function adjacentIdx(
+  bookId: string,
+  idx: number,
+  dir: "prev" | "next",
+): Promise<number | null> {
+  const [row] = await db
+    .select({ idx: chapters.idx })
+    .from(chapters)
+    .where(
+      and(
+        eq(chapters.bookId, bookId),
+        dir === "prev" ? lt(chapters.idx, idx) : gt(chapters.idx, idx),
+      ),
+    )
+    .orderBy(dir === "prev" ? desc(chapters.idx) : asc(chapters.idx))
+    .limit(1);
+  return row?.idx ?? null;
+}
+
+/** 序位 + 全章數：position = idx 不大於本章者的數量（= 舊 pos+1），與 library.ts 同模式。 */
+async function countPosition(
+  bookId: string,
+  idx: number,
+): Promise<{ position: number; totalChapters: number }> {
+  const [row] = await db
+    .select({
+      totalChapters: sql<number>`count(*)`,
+      position: sql<number>`sum(case when ${chapters.idx} <= ${idx} then 1 else 0 end)`,
+    })
+    .from(chapters)
+    .where(eq(chapters.bookId, bookId));
   return {
-    book,
-    chapter,
-    content,
-    prevIdx: rows[pos - 1]?.idx ?? null,
-    nextIdx: rows[pos + 1]?.idx ?? null,
-    position: pos + 1,
-    totalChapters: rows.length,
+    position: row?.position ?? 1,
+    totalChapters: row?.totalChapters ?? 1,
   };
 }
 
