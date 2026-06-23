@@ -3,6 +3,7 @@ import "server-only";
 import { cookies, headers } from "next/headers";
 
 import { guestAuth, verifySession, SESSION_COOKIE, type Auth } from "@/lib/auth";
+import { clientIpFromHeaders } from "@/lib/client-ip";
 
 /**
  * Server Component / server action 內取目前身分。
@@ -16,6 +17,6 @@ export async function getServerAuth(): Promise<Auth> {
   if (session) return { role: session.role, identity: `${session.role}:${session.id}` };
 
   const h = await headers();
-  const ip = h.get("x-forwarded-for")?.split(",")[0].trim() ?? h.get("x-real-ip") ?? "unknown";
-  return guestAuth(ip);
+  // 同一條可信來源邏輯,集中在 client-ip helper(別在這裡信任 XFF 第一段)。
+  return guestAuth(clientIpFromHeaders((name) => h.get(name)));
 }

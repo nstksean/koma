@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { accessCodes } from "@/db/schema";
+import { clientIpFromRequest } from "@/lib/client-ip";
 
 /**
  * 邀請碼 + 簽章 cookie 的身分系統（無密碼、無第三方）。
@@ -95,12 +96,6 @@ export function guestAuth(ip: string): Auth {
   return { role: "guest", identity: `guest:${ipHash}` };
 }
 
-function clientIp(req: Request): string {
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0].trim();
-  return req.headers.get("x-real-ip") ?? "unknown";
-}
-
 function readCookie(req: Request, name: string): string | undefined {
   const header = req.headers.get("cookie");
   if (!header) return undefined;
@@ -117,7 +112,7 @@ function readCookie(req: Request, name: string): string | undefined {
 /** 從 Request 解析身分：有效 session → admin/member,否則 guest（hashed IP）。 */
 export function resolveAuth(req: Request): Auth {
   const session = verifySession(readCookie(req, SESSION_COOKIE));
-  return session ? sessionToAuth(session) : guestAuth(clientIp(req));
+  return session ? sessionToAuth(session) : guestAuth(clientIpFromRequest(req));
 }
 
 function adminCodes(): string[] {
