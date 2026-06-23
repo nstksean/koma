@@ -2,8 +2,9 @@ import "server-only";
 import * as sdk from "microsoft-cognitiveservices-speech-sdk";
 import type { AzureBoundary, CharTimestamp } from "./types";
 import { azureWordsToChars, utf16ToCodePointOffset } from "./azure-normalize";
-import { chunkContent } from "./chunk";
+import { chunkContent, type ContentChunk } from "./chunk";
 import { pcmBytesToMs, shiftCharTimestamps } from "./stitch";
+import { pcmPartsToWav, pcmTotalBytes } from "./wav";
 
 /**
  * Azure 合成引擎產物(一章)。server-only:依賴 process.env 與 Node-only SDK,
@@ -48,29 +49,6 @@ function boundaryTypeLabel(
     default:
       return "Word";
   }
-}
-
-/** 串接 PCM + 加 44-byte WAV header → 單一可播 WAV(沿用 play-chapter 邏輯)。 */
-function pcmToWav(pcm: Uint8Array, sampleRate: number): Buffer {
-  const channels = 1;
-  const bitsPerSample = 16;
-  const byteRate = (sampleRate * channels * bitsPerSample) / 8;
-  const blockAlign = (channels * bitsPerSample) / 8;
-  const header = Buffer.alloc(44);
-  header.write("RIFF", 0);
-  header.writeUInt32LE(36 + pcm.length, 4);
-  header.write("WAVE", 8);
-  header.write("fmt ", 12);
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20); // PCM
-  header.writeUInt16LE(channels, 22);
-  header.writeUInt32LE(sampleRate, 24);
-  header.writeUInt32LE(byteRate, 28);
-  header.writeUInt16LE(blockAlign, 32);
-  header.writeUInt16LE(bitsPerSample, 34);
-  header.write("data", 36);
-  header.writeUInt32LE(pcm.length, 40);
-  return Buffer.concat([header, Buffer.from(pcm)]);
 }
 
 /** 單段合成結果:raw PCM bytes + 段內(textOffset 從 0 起算)的 wordBoundary。 */
@@ -171,13 +149,57 @@ async function synthesizeSegmentWithRetry(
   );
 }
 
+/** 逐段合成的累積結果:各段 PCM(順序保留)+ 各段已平移成全章絕對時間的 charTimestamp。 */
+interface ChunkSynthesis {
+  readonly parts: readonly Uint8Array[];
+  readonly charBatches: readonly (readonly CharTimestamp[])[];
+}
+
+/**
+ * 逐段序列合成(不可並行):保 PCM 順序 + 避 Azure 併發限制。
+ * 每段 wordBoundary → azureWordsToChars(-cpStart) 得全域 charIndex →
+ * shiftCharTimestamps(+cumulativeMs) 得全章絕對時間。cumulativeMs 只用
+ * pcmBytesToMs 累積(絕不用 boundary ms):PCM 長度才是該段真實貢獻時長。
+ */
+async function synthesizeChunks(
+  chunks: readonly ContentChunk[],
+  key: string,
+  region: string,
+  voice: string,
+): Promise<ChunkSynthesis> {
+  const parts: Uint8Array[] = [];
+  const charBatches: (readonly CharTimestamp[])[] = [];
+  let cumulativeMs = 0;
+
+  for (const chunk of chunks) {
+    // 純空白/換行段:跳過合成,貢獻 0 PCM、0 boundary。cpStart 已由 chunkContent
+    // 處理,charIndex 索引空間不受影響(後續段照樣對齊),無需補。
+    if (chunk.text.trim() === "") continue;
+
+    const { pcm, boundaries } = await synthesizeSegmentWithRetry(
+      key,
+      region,
+      voice,
+      chunk.text,
+    );
+
+    // 段內 textOffset 從 0 起算 → 傳 -cpStart 還原成全域 charIndex;
+    // 段內相對時間 + 該段在音檔的起始 offset(cumulativeMs)→ 全章絕對時間。
+    const segChars = azureWordsToChars(boundaries, -chunk.cpStart);
+    charBatches.push(shiftCharTimestamps(segChars, cumulativeMs));
+
+    parts.push(pcm);
+    cumulativeMs += pcmBytesToMs(pcm.byteLength);
+  }
+
+  return { parts, charBatches };
+}
+
 /**
  * 把一章已清洗純文字合成成「音檔 + 逐字 timestamp」(04 §2.1.1 / §3)。
  *
- * 流程:chunkContent → 逐段序列合成(不並行,保 PCM 順序 + 避 Azure 併發限制)
- * → 每段 wordBoundary 映射 AzureBoundary → azureWordsToChars(seg, -cpStart)
- * 得全域 charIndex → shiftCharTimestamps(+cumulativeMs) 得全章絕對時間
- * (cumulativeMs 只用 pcmBytesToMs 累積,絕不用 boundary ms)→ 串 PCM + WAV header。
+ * 流程:chunkContent → synthesizeChunks(逐段序列合成 + 全章時間平移)→
+ * pcmPartsToWav 直接把各段 PCM 封成 WAV(不先 merge 成全章 PCM,省一份全章拷貝)。
  *
  * 索引對齊鐵則:charTimestamps.charIndex 落在 [...plainText] 的 code-point 索引空間,
  * 與渲染端 [...chapterContent] 逐字編號一致。
@@ -198,48 +220,11 @@ export async function synthesizeAzureChapter(
   }
 
   const chunks = chunkContent(plainText, MAX_CODE_POINTS);
+  const { parts, charBatches } = await synthesizeChunks(chunks, key, region, voice);
 
-  const parts: Uint8Array[] = [];
-  const charBatches: (readonly CharTimestamp[])[] = [];
-  let cumulativeMs = 0;
-
-  // 逐段序列(不可並行):保 PCM 順序 + 避 Azure 併發限制。
-  for (const chunk of chunks) {
-    // 純空白/換行段:跳過合成,貢獻 0 PCM、0 boundary。cpStart 已由 chunkContent
-    // 處理,charIndex 索引空間不受影響(後續段照樣對齊),無需補。
-    if (chunk.text.trim() === "") {
-      continue;
-    }
-
-    const { pcm, boundaries } = await synthesizeSegmentWithRetry(
-      key,
-      region,
-      voice,
-      chunk.text,
-    );
-
-    // 段內 textOffset 從 0 起算 → 傳 -cpStart 還原成全域 charIndex。
-    const segChars = azureWordsToChars(boundaries, -chunk.cpStart);
-    // 段內相對時間 + 該段在音檔的起始 offset(cumulativeMs)→ 全章絕對時間。
-    const shifted = shiftCharTimestamps(segChars, cumulativeMs);
-    charBatches.push(shifted);
-
-    parts.push(pcm);
-    // 只用 PCM bytes 累積(絕不用 boundary ms):PCM 長度才是該段真實貢獻時長。
-    cumulativeMs += pcmBytesToMs(pcm.byteLength);
-  }
-
-  // 串所有 PCM。
-  const totalLen = parts.reduce((n, p) => n + p.byteLength, 0);
-  const merged = new Uint8Array(totalLen);
-  let off = 0;
-  for (const p of parts) {
-    merged.set(p, off);
-    off += p.byteLength;
-  }
-
-  const wav = pcmToWav(merged, SAMPLE_RATE);
-  const durationMs = pcmBytesToMs(merged.byteLength);
+  // 各段 PCM 直接封成 WAV(省掉中間 merged 全章拷貝);durationMs 用累計 byteLength。
+  const wav = pcmPartsToWav(parts, SAMPLE_RATE);
+  const durationMs = pcmBytesToMs(pcmTotalBytes(parts));
   // 各段 shifted 攤平:段序即時間序,天然按 startMs 遞增。
   const charTimestamps: readonly CharTimestamp[] = charBatches.flat();
 
