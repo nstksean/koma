@@ -1,7 +1,7 @@
 import "server-only";
 import * as sdk from "microsoft-cognitiveservices-speech-sdk";
 import type { AzureBoundary, CharTimestamp } from "./types";
-import { azureWordsToChars } from "./azure-normalize";
+import { azureWordsToChars, utf16ToCodePointOffset } from "./azure-normalize";
 import { chunkContent } from "./chunk";
 import { pcmBytesToMs, shiftCharTimestamps } from "./stitch";
 
@@ -103,9 +103,12 @@ function synthesizeSegment(
     const collected: AzureBoundary[] = [];
 
     synthesizer.wordBoundary = (_s, e) => {
+      // e.textOffset/wordLength 是 UTF-16 code-unit 值(SDK 以 privRawText.indexOf
+      // 計算)。下游 charIndex 對齊鐵則是 code-point 索引,故在源頭就把 textOffset
+      // 淨化成段內 code-point offset;否則段內任一非 BMP 字會讓其後高亮整段平移。
       collected.push({
         text: e.text,
-        textOffset: e.textOffset, // plain text 輸入 → 段內從 0 起算
+        textOffset: utf16ToCodePointOffset(text, e.textOffset), // 段內 code-point offset
         wordLength: e.wordLength,
         startMs: e.audioOffset / TICKS_PER_MS,
         durationMs: typeof e.duration === "number" ? e.duration / TICKS_PER_MS : 0,

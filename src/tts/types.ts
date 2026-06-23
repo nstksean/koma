@@ -73,13 +73,18 @@ export interface AudioSourceProvider {
 
 /**
  * Azure Speech SDK `wordBoundary` 事件的最小形狀（spike 實測欄位，§2.1.1）。
- * ⚠️ Azure 對中文落「詞級」非字級，且 textOffset 為 SSML-relative。
- * 正規化由 `azureWordsToChars` 處理（src/tts/azure-normalize.ts）。
+ * ⚠️ Azure 對中文落「詞級」非字級。
+ *
+ * textOffset 語義（重要）：SDK 原始 `e.textOffset` 是 **UTF-16 code-unit** offset
+ * （以 `privRawText.indexOf(text)` 計算）。但本型別約定 `textOffset` 已是段內
+ * **code-point** offset —— 由 `synthesizeSegment` 在收 boundary 當下以
+ * `utf16ToCodePointOffset` 淨化後才填入。如此 `azureWordsToChars` 直接用
+ * code-point 語意相加（含 -cpStart 還原全域 index）即正確，段內含非 BMP 字也不平移。
  */
 export interface AzureBoundary {
   readonly text: string; // 該 boundary 文字，中文可能 1–2 字
-  readonly textOffset: number; // ⚠️ 相對整個 SSML 字串（含前綴），非純文字
-  readonly wordLength: number; // 涵蓋 char 數；僅供參考，azureWordsToChars 以 [...text].length 為準
+  readonly textOffset: number; // 段內 code-point offset（已淨化，非 SDK 原始 UTF-16 值）
+  readonly wordLength: number; // SDK 原始 UTF-16 長度；僅供參考，azureWordsToChars 以 [...text].length 為準
   readonly startMs: number; // audioOffset / 10000
   readonly durationMs: number; // duration / 10000
   readonly type: "Word" | "Punctuation" | "Sentence";

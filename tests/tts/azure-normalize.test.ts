@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { azureWordsToChars } from "@/src/tts/azure-normalize";
+import {
+  azureWordsToChars,
+  utf16ToCodePointOffset,
+} from "@/src/tts/azure-normalize";
 import type { AzureBoundary } from "@/src/tts/types";
 
 /**
@@ -112,5 +115,47 @@ describe("azureWordsToChars", () => {
       { char: "夜", charIndex: 0, startMs: 500, endMs: 500 },
       { char: "色", charIndex: 1, startMs: 500, endMs: 500 },
     ]);
+  });
+});
+
+/**
+ * utf16ToCodePointOffset — 把 SDK 的 UTF-16 textOffset 轉成段內 code-point offset。
+ * Azure SDK 用 `privRawText.indexOf(text)`（UTF-16 語義）算 textOffset，但整條高亮
+ * 對齊鐵則是 charIndex 落在 `[...text]` 的 code-point 索引空間。段內出現任一非 BMP
+ * 字（佔 2 UTF-16 unit）時兩者開始分歧 → 此函式在進 azureWordsToChars 前淨化。
+ */
+describe("utf16ToCodePointOffset", () => {
+  it("純 BMP 文字：UTF-16 offset = code-point offset（恆等）", () => {
+    const t = "夜色漸深";
+    expect(utf16ToCodePointOffset(t, 0)).toBe(0);
+    expect(utf16ToCodePointOffset(t, 1)).toBe(1);
+    expect(utf16ToCodePointOffset(t, 3)).toBe(3);
+    expect(utf16ToCodePointOffset(t, 4)).toBe(4); // 結尾
+  });
+
+  it("非 BMP 字（U+20000 佔 2 UTF-16 unit）之後的 offset 被收斂回 code-point", () => {
+    // "𠀀好嗎": 𠀀 佔 utf16 [0,1]; 好 在 utf16=2/cp=1; 嗎 在 utf16=3/cp=2
+    const t = "𠀀好嗎";
+    expect(utf16ToCodePointOffset(t, 0)).toBe(0); // 𠀀
+    expect(utf16ToCodePointOffset(t, 2)).toBe(1); // 好（SDK 會回 utf16=2）
+    expect(utf16ToCodePointOffset(t, 3)).toBe(2); // 嗎（SDK 會回 utf16=3）
+    expect(utf16ToCodePointOffset(t, 5)).toBe(3); // 結尾
+  });
+
+  it("多個非 BMP 字累積偏移", () => {
+    // "𠀀𠀁好": 兩個 surrogate pair 各佔 2 → 好 在 utf16=4/cp=2
+    const t = "𠀀𠀁好";
+    expect(utf16ToCodePointOffset(t, 4)).toBe(2);
+  });
+
+  it("offset 落在 surrogate pair 內部（不應發生，防禦性）→ 取所在字的 cp index", () => {
+    // utf16=1 落在 𠀀 的 low surrogate；保守回 0（該字 code-point index）。
+    const t = "𠀀好";
+    expect(utf16ToCodePointOffset(t, 1)).toBe(0);
+  });
+
+  it("offset 超出長度 → 回總 code-point 數（夾住，不溢出）", () => {
+    const t = "𠀀好";
+    expect(utf16ToCodePointOffset(t, 99)).toBe(2);
   });
 });
