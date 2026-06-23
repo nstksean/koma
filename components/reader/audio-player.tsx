@@ -20,9 +20,10 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { ttsAudioUrl, ttsTimestampsUrl } from "@/src/tts";
 import type { CharTimestamp, TimestampsPayload } from "@/src/tts";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Popover,
   PopoverClose,
@@ -31,11 +32,21 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { useMounted } from "@/lib/use-mounted";
+import { canAutoPrefetch } from "@/lib/role-hint";
 import { useTtsHighlight } from "./use-tts-highlight";
 
 /** 變速檔位(下限 1×、上限 2×,防變調由 preservesPitch 處理)。dropdown 直選,非循環。 */
 const PLAYBACK_RATES = [1, 1.25, 1.5, 1.75, 2] as const;
 const DEFAULT_VOICE = "zh-TW-HsiaoChenNeural";
+
+/**
+ * 首播載入逾時。合成為逐段序列(900 code points/段),極長章 + 偶發重試最壞約 40s,
+ * 故設 45s 留一點 margin 不誤砍正常合成 —— 逾時純為解開 iOS 背景化 / 鎖屏 / 斷網時
+ * fetch 永不 settle 的死結(否則卡在 loading,點擊與 ensureLoaded 都被守門擋住,只能
+ * refresh),這也是真卡死時使用者盯轉圈圈的上限,故不再放大。逾時 abort 不影響 server
+ * 端合成(仍會完成並落地),重按即命中快取(或附上同一 inflight 工作)秒回。
+ */
+const PREFETCH_TIMEOUT_MS = 45_000;
 
 type PlayerStatus =
   | "idle"
@@ -102,6 +113,8 @@ export function AudioPlayer({
   const mounted = useMounted();
   const [status, setStatus] = useState<PlayerStatus>("idle");
   const [errorMsg, setErrorMsg] = useState<string>("");
+  const [quotaHit, setQuotaHit] = useState(false); // 429 額度用完:錯誤列改顯示 /unlock 入口而非「重試」
+
   const [durationMs, setDurationMs] = useState(0);
   const [positionMs, setPositionMs] = useState(0); // 進度條/時間顯示(非每幀,用 timeupdate)
   const [rateIdx, setRateIdx] = useState(1); // 預設 1.0×
@@ -159,52 +172,88 @@ export function AudioPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted]);
 
-  /** 確保已抓 timestamp + 設好 audio.src(冪等,首播觸發 server 惰性合成可能數十秒)。回傳是否就緒。 */
-  const ensureLoaded = useCallback(async (): Promise<boolean> => {
-    const audio = audioRef.current;
-    if (!audio) return false;
-    if (loadedRef.current) return true;
-    if (loadingRef.current) return false; // 合成進行中,忽略重複觸發
-    loadingRef.current = true;
-    setStatus("loading");
-    setErrorMsg("");
-    const controller = new AbortController();
-    abortRef.current = controller;
-    try {
-      const res = await fetch(
-        ttsTimestampsUrl(bookSource, sourceBookId, idx, voice),
-        { signal: controller.signal },
-      );
-      if (!res.ok) throw new Error(`合成失敗(${res.status})`);
-      const payload = (await res.json()) as TimestampsPayload;
-      if (controller.signal.aborted) return false; // 已換章/卸載,丟棄結果不 setState
-      charsRef.current = payload.charTimestamps;
-      setChars(payload.charTimestamps);
-      setDurationMs(payload.durationMs);
-      // 此時 server 已完成合成,音檔秒回。
-      audio.src = ttsAudioUrl(bookSource, sourceBookId, idx, voice);
-      audio.preservesPitch = true; // 變速防變調
-      audio.playbackRate = PLAYBACK_RATES[rateIdxRef.current]; // 讀最新檔位,非 capture
-      loadedRef.current = true;
-      setStatus("ready"); // 合成完、未播:播放鈕轉可按(loadAndPlay 隨後覆寫為 playing)
-      return true;
-    } catch {
-      // 卸載 abort 不是錯誤,靜默丟棄(避免對已卸載元件 setState)。
-      if (controller.signal.aborted) return false;
-      setStatus("error");
-      setErrorMsg("聽書合成失敗,請稍後再試。");
-      onPlayingChange?.(false);
-      return false;
-    } finally {
-      loadingRef.current = false;
-    }
-  }, [bookSource, sourceBookId, idx, voice, setChars, onPlayingChange]);
+  /**
+   * 確保已抓 timestamp + 設好 audio.src(冪等,首播觸發 server 惰性合成可能數十秒)。回傳是否就緒。
+   * @param userInitiated 使用者主動觸發(按播放/點字)時為 true:失敗會顯示錯誤提示;
+   *   背景 prefetch(false)失敗則靜默退回 idle,播放鈕仍可按,按下重載即秒回。
+   */
+  const ensureLoaded = useCallback(
+    async (userInitiated = false): Promise<boolean> => {
+      const audio = audioRef.current;
+      if (!audio) return false;
+      if (loadedRef.current) return true;
+      if (loadingRef.current) return false; // 合成進行中,忽略重複觸發
+      loadingRef.current = true;
+      setStatus("loading");
+      setErrorMsg("");
+      setQuotaHit(false);
+      const controller = new AbortController();
+      abortRef.current = controller;
+      // timedOut 區分「逾時 abort(可復原)」與「卸載 abort(靜默丟棄)」——兩者都會
+      // 讓 controller.signal.aborted=true,只能靠此旗標分辨。
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, PREFETCH_TIMEOUT_MS);
+      try {
+        const res = await fetch(
+          ttsTimestampsUrl(bookSource, sourceBookId, idx, voice),
+          { signal: controller.signal },
+        );
+        // 額度用完(429):非暫時性,重試無用 —— 顯示 server 文案 + /unlock 入口,
+        // 不走下方泛用錯誤路徑(那只給「重試」)。背景 prefetch 僅 admin(無限)觸發、
+        // 不會 429,故此處不分 userInitiated。
+        if (res.status === 429) {
+          const body = (await res.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          setStatus("error");
+          setErrorMsg(body?.error ?? "今日聽書額度已用完,請解鎖或明日再試。");
+          setQuotaHit(true);
+          onPlayingChange?.(false);
+          return false;
+        }
+        if (!res.ok) throw new Error(`合成失敗(${res.status})`);
+        const payload = (await res.json()) as TimestampsPayload;
+        // 已換章/卸載或逾時:丟進 catch 統一處理(直接 return false 會卡在 loading)。
+        if (controller.signal.aborted) throw new Error("aborted");
+        charsRef.current = payload.charTimestamps;
+        setChars(payload.charTimestamps);
+        setDurationMs(payload.durationMs);
+        // 此時 server 已完成合成,音檔秒回。
+        audio.src = ttsAudioUrl(bookSource, sourceBookId, idx, voice);
+        audio.preservesPitch = true; // 變速防變調
+        audio.playbackRate = PLAYBACK_RATES[rateIdxRef.current]; // 讀最新檔位,非 capture
+        loadedRef.current = true;
+        setStatus("ready"); // 合成完、未播:播放鈕轉可按(loadAndPlay 隨後覆寫為 playing)
+        return true;
+      } catch {
+        // 卸載 abort(非逾時):元件已走,靜默丟棄不 setState。
+        if (controller.signal.aborted && !timedOut) return false;
+        // 逾時 / 網路 / HTTP 錯誤 → 可復原。背景 prefetch 靜默退回 idle(鈕仍可按),
+        // 唯使用者主動觸發才彈錯誤提示,避免背景失敗驚動沒在看的使用者。
+        if (userInitiated) {
+          setStatus("error");
+          setErrorMsg("聽書合成失敗,請稍後再試。");
+          onPlayingChange?.(false);
+        } else {
+          setStatus("idle");
+        }
+        return false;
+      } finally {
+        clearTimeout(timer);
+        loadingRef.current = false;
+      }
+    },
+    [bookSource, sourceBookId, idx, voice, setChars, onPlayingChange],
+  );
 
   /** 播放鈕:確保載入 → 從目前位置播(首播為 0)。 */
   const loadAndPlay = useCallback(async () => {
     const audio = audioRef.current;
     if (!audio) return;
-    if (!(await ensureLoaded())) return;
+    if (!(await ensureLoaded(true))) return;
     try {
       await audio.play();
       setStatus("playing");
@@ -222,7 +271,7 @@ export function AudioPlayer({
     async (charIndex: number) => {
       const audio = audioRef.current;
       if (!audio) return;
-      if (!(await ensureLoaded())) return;
+      if (!(await ensureLoaded(true))) return;
       const chars = charsRef.current;
       if (chars.length === 0) return;
       const entry =
@@ -249,8 +298,11 @@ export function AudioPlayer({
   // play(),故僅預跑 server 惰性合成 + 設 audio.src,狀態轉 ready,使用者按播放即秒回。
   // 換章時 reader-view 以 key={chapterId} 重掛本元件 → mounted false→true 再跑一次。
   // ensureLoaded 冪等(loadedRef 守門),身分變動誤觸亦無害,故僅依 mounted。
+  // 只有「無限額度」(admin)才自動 prefetch;有限額度者(member/guest)按播放才合成,
+  // 避免「光是翻開章節」就被 prefetch 扣掉每日額度(canAutoPrefetch 讀非權威角色提示)。
   useEffect(() => {
     if (!mounted) return;
+    if (!canAutoPrefetch()) return;
     void ensureLoaded();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted]);
@@ -425,14 +477,26 @@ export function AudioPlayer({
         {isError && (
           <div className="flex items-center gap-2 text-xs text-destructive">
             <span>{errorMsg}</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-xs"
-              onClick={handlePlayPause}
-            >
-              重試
-            </Button>
+            {quotaHit ? (
+              <Link
+                href="/unlock"
+                className={cn(
+                  buttonVariants({ variant: "ghost", size: "sm" }),
+                  "h-6 px-2 text-xs",
+                )}
+              >
+                解鎖
+              </Link>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={handlePlayPause}
+              >
+                重試
+              </Button>
+            )}
           </div>
         )}
       </div>

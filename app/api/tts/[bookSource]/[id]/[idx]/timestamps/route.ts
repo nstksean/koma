@@ -1,4 +1,6 @@
 import { getChapterAudioMeta } from "@/lib/tts";
+import { resolveAuth } from "@/lib/auth";
+import { QuotaError } from "@/lib/tts-quota";
 import type { TimestampsPayload } from "@/src/tts";
 import { parseTtsParams } from "../parse-params";
 
@@ -18,9 +20,10 @@ export async function GET(
   const parsed = parseTtsParams(await ctx.params, req.url);
   if (!parsed.ok) return parsed.response;
   const { bookSource, slug, idxNum, voice } = parsed.params;
+  const auth = resolveAuth(req);
 
   try {
-    const file = await getChapterAudioMeta(bookSource, slug, idxNum, voice);
+    const file = await getChapterAudioMeta(bookSource, slug, idxNum, auth, voice);
     const payload: TimestampsPayload = {
       durationMs: file.durationMs,
       includesPunctuation: file.includesPunctuation,
@@ -32,6 +35,12 @@ export async function GET(
       },
     });
   } catch (error: unknown) {
+    if (error instanceof QuotaError) {
+      return Response.json(
+        { error: error.message, role: error.role, limit: error.limit },
+        { status: 429, headers: { "Retry-After": "3600" } },
+      );
+    }
     // 對外固定文案,完整錯誤只記在 server 端(同 audio route 的洩漏防護)。
     const isNotFound =
       error instanceof Error && error.message.includes("找不到");

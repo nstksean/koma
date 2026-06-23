@@ -9,3 +9,9 @@ export type { LibraryEntry, NewLibraryEntry } from "./library";
 
 export { progress } from "./progress";
 export type { Progress, NewProgress } from "./progress";
+
+export { accessCodes } from "./access-codes";
+export type { AccessCode, NewAccessCode } from "./access-codes";
+
+export { ttsUsage } from "./tts-usage";
+export type { TtsUsage, NewTtsUsage } from "./tts-usage";

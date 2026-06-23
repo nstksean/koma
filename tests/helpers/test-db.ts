@@ -1,25 +1,29 @@
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import * as schema from "@/db/schema";
 
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 
-const MIGRATION = path.join(
-  process.cwd(),
-  "db/migrations/0000_elite_sir_ram.sql",
-);
+const MIGRATIONS_DIR = path.join(process.cwd(), "db/migrations");
 
 /**
- * 建一個全新的記憶體 libsql 資料庫並套用 migration。
+ * 建一個全新的記憶體 libsql 資料庫並依序套用全部 migration（0000、0001…）。
  * 每個測試呼叫一次，確保完全隔離（互不污染）。
  * migration 內的 `--> statement-breakpoint` 是 `--` 開頭的 SQL 註解，
  * 可整份交給 executeMultiple。
  */
 export async function createTestDb(): Promise<TestDb> {
   const client = createClient({ url: ":memory:" });
-  await client.executeMultiple(readFileSync(MIGRATION, "utf8"));
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+  for (const file of files) {
+    await client.executeMultiple(
+      readFileSync(path.join(MIGRATIONS_DIR, file), "utf8"),
+    );
+  }
   return drizzle(client, { schema });
 }
 

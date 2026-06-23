@@ -6,6 +6,9 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 import { getChapterView } from "@/lib/books";
+import { pruneCache } from "@/lib/tts-cache";
+import { assertQuota, consumeQuota, quotaEnforced } from "@/lib/tts-quota";
+import type { Auth } from "@/lib/auth";
 import { synthesizeAzureChapter } from "@/src/tts/azure-synthesize";
 import type { CharTimestamp } from "@/src/tts";
 
@@ -118,6 +121,9 @@ async function synthesizeAndCache(
   textHash: string,
 ): Promise<ChapterAudioFile> {
   const result = await synthesizeAzureChapter(content, voice);
+  // 計費足跡:只有 miss→真正合成才送 Azure(cache hit 不收費),故在此記字元數。
+  // grep '[tts] synth' 加總 chars 即可估算實際付費用量;權威數字仍看 Azure Portal。
+  console.info(`[tts] synth chars=${content.length} voice=${voice} idx=${idx}`);
 
   await mkdir(dir, { recursive: true });
   const wavPath = path.join(dir, `${idx}.wav`);
@@ -139,6 +145,9 @@ async function synthesizeAndCache(
   await writeFile(wavPath, result.wav);
   await writeFile(jsonPath, JSON.stringify(meta), "utf8");
 
+  // 寫完才壓上限：prefetch 每進章合成,不淘汰會無上限長。pruneCache 永不丟錯。
+  await pruneCache(CACHE_ROOT);
+
   return {
     wavPath,
     durationMs: result.durationMs,
@@ -153,12 +162,14 @@ async function synthesizeAndCache(
  * @param bookSource 書源 id（czbooks/ttkan/local…），作為快取第一層目錄
  * @param slug       來源書 id（= getChapterView 的 sourceBookId）
  * @param idx        章節 idx（來源頁碼，非序位）
+ * @param auth       請求者身分（額度把關;cache 命中不計、不檢查）
  * @param voice      Azure 音色 id,預設 zh-TW-HsiaoChenNeural
  */
 export async function getChapterAudioMeta(
   bookSource: string,
   slug: string,
   idx: number,
+  auth: Auth,
   voice: string = DEFAULT_VOICE,
 ): Promise<ChapterAudioFile> {
   // 三個路徑片段都 sanitize：bookSource 同樣來自 URL，未過濾會讓
@@ -188,9 +199,22 @@ export async function getChapterAudioMeta(
     const dir = path.join(CACHE_ROOT, sourceSafe, voiceSafe, slugSafe);
 
     const hit = await readCache(dir, idx, textHash);
-    if (hit) return hit;
+    if (hit) return hit; // cache 命中：不檢查、不消耗額度（重播/拖進度條免費）
 
-    return synthesizeAndCache(dir, idx, content, voice, textHash);
+    // dev/test 不看權限(只 production 強制),本機與測試免設定 auth/額度即可用。
+    const enforce = quotaEnforced();
+    // miss → 真要送 Azure 付費合成,先擋額度(超額丟 QuotaError → route 回 429)。
+    if (enforce) await assertQuota(auth);
+    const made = await synthesizeAndCache(dir, idx, content, voice, textHash);
+    // 合成成功才 +1;計額失敗不該讓已完成的合成 500(best-effort,記 log)。
+    if (enforce) {
+      try {
+        await consumeQuota(auth);
+      } catch (err) {
+        console.warn("[tts] 計額失敗(本次未計入):", err);
+      }
+    }
+    return made;
   })();
 
   inflight.set(key, task);

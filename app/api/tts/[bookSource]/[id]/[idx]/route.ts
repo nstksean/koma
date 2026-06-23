@@ -3,6 +3,8 @@ import { open, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 
 import { getChapterAudioMeta } from "@/lib/tts";
+import { resolveAuth } from "@/lib/auth";
+import { QuotaError } from "@/lib/tts-quota";
 import { parseTtsParams } from "./parse-params";
 
 /**
@@ -71,9 +73,10 @@ export async function GET(
   const parsed = parseTtsParams(await ctx.params, req.url);
   if (!parsed.ok) return parsed.response;
   const { bookSource, slug, idxNum, voice } = parsed.params;
+  const auth = resolveAuth(req);
 
   try {
-    const file = await getChapterAudioMeta(bookSource, slug, idxNum, voice);
+    const file = await getChapterAudioMeta(bookSource, slug, idxNum, auth, voice);
     const { size } = await stat(file.wavPath);
     const range = parseRange(req.headers.get("range"), size);
 
@@ -109,6 +112,13 @@ export async function GET(
       },
     });
   } catch (error: unknown) {
+    // 額度用完 → 429（預期 client error,不記 log）。
+    if (error instanceof QuotaError) {
+      return Response.json(
+        { error: error.message, role: error.role, limit: error.limit },
+        { status: 429, headers: { "Retry-After": "3600" } },
+      );
+    }
     // 找不到章節/書（getChapterView throw「找不到…」）→ 404,其餘 → 500。
     // 對外只回固定文案,完整錯誤記在 server 端 —— 內部訊息(Azure 細節、env 提示、
     // fs 路徑)不可洩漏給 client。404 屬預期 client error,不記 log 避免噪音。

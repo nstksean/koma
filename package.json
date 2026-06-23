@@ -19,7 +19,8 @@
     "spike:tts:azure": "tsx --env-file-if-exists=.env.local scripts/spike-tts-azure.ts",
     "spike:tts:iqt": "tsx --env-file-if-exists=.env.local scripts/spike-tts-iqt.ts",
     "spike:tts:eleven": "tsx --env-file-if-exists=.env.local scripts/spike-tts-eleven.ts",
-    "preload": "tsx scripts/preload.ts"
+    "preload": "tsx scripts/preload.ts",
+    "code:gen": "tsx --env-file-if-exists=.env.local scripts/gen-access-code.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.17.3",
