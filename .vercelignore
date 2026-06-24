@@ -1,0 +1,7 @@
+# 本機才有、不該上傳到 Vercel 的重目錄（.gitignore 語法，註解須獨立成行）
+# forced-align POC 的 Python venv（~17k 檔 + 1.3GB 模型）
+.venv-align/
+# 本機 SQLite + TTS 檔案快取（serverless 不適用，見 docs/how-to/deploy.md）
+data/
+scratchpad/
+*.log
