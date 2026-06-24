@@ -225,60 +225,61 @@ export function ReaderView({
         </span>
         <ChapterDrawer source={source} sourceBookId={sourceBookId} currentIdx={idx} />
         <Button
-          variant="ghost"
+          variant={showSettings ? "secondary" : "ghost"}
           size="icon"
           aria-label="閱讀設定"
+          aria-pressed={showSettings}
           onClick={() => setShowSettings((v) => !v)}
         >
           <Settings2 />
         </Button>
         <ThemeToggle />
-      </header>
 
-      {/* 設定面板 */}
-      {showSettings && (
-        <div className="border-b border-border bg-card px-4 py-3 text-sm">
-          <SettingRow
-            label="字級"
-            value={`${Math.round(settings.fontSize * 16)}px`}
-            onDec={() =>
-              setSettings((s) => ({ ...s, fontSize: round(Math.max(FONT_MIN, s.fontSize - 0.0625)) }))
-            }
-            onInc={() =>
-              setSettings((s) => ({ ...s, fontSize: round(Math.min(FONT_MAX, s.fontSize + 0.0625)) }))
-            }
-          />
-          <SettingRow
-            label="行距"
-            value={settings.lineHeight.toFixed(1)}
-            onDec={() =>
-              setSettings((s) => ({ ...s, lineHeight: round(Math.max(LH_MIN, s.lineHeight - 0.1)) }))
-            }
-            onInc={() =>
-              setSettings((s) => ({ ...s, lineHeight: round(Math.min(LH_MAX, s.lineHeight + 0.1)) }))
-            }
-          />
-          <div className="flex items-center justify-between py-1.5">
-            <span className="text-muted-foreground">字型</span>
-            <div className="flex gap-2">
-              <Button
-                variant={settings.fontFamily === "sans" ? "secondary" : "outline"}
-                size="sm"
-                onClick={() => setSettings((s) => ({ ...s, fontFamily: "sans" }))}
-              >
-                黑體
-              </Button>
-              <Button
-                variant={settings.fontFamily === "serif" ? "secondary" : "outline"}
-                size="sm"
-                onClick={() => setSettings((s) => ({ ...s, fontFamily: "serif" }))}
-              >
-                明體
-              </Button>
+        {/* 設定面板:浮在工具列下方往下展開,不擠壓內文 */}
+        {showSettings && (
+          <div className="absolute inset-x-0 top-full origin-top animate-in slide-in-from-top-2 fade-in duration-200 border-b border-border bg-card px-4 py-3 text-sm shadow-lg">
+            <SettingRow
+              label="字級"
+              value={`${Math.round(settings.fontSize * 16)}px`}
+              onDec={() =>
+                setSettings((s) => ({ ...s, fontSize: round(Math.max(FONT_MIN, s.fontSize - 0.0625)) }))
+              }
+              onInc={() =>
+                setSettings((s) => ({ ...s, fontSize: round(Math.min(FONT_MAX, s.fontSize + 0.0625)) }))
+              }
+            />
+            <SettingRow
+              label="行距"
+              value={settings.lineHeight.toFixed(1)}
+              onDec={() =>
+                setSettings((s) => ({ ...s, lineHeight: round(Math.max(LH_MIN, s.lineHeight - 0.1)) }))
+              }
+              onInc={() =>
+                setSettings((s) => ({ ...s, lineHeight: round(Math.min(LH_MAX, s.lineHeight + 0.1)) }))
+              }
+            />
+            <div className="flex items-center justify-between py-1.5">
+              <span className="text-muted-foreground">字型</span>
+              <div className="flex gap-2">
+                <Button
+                  variant={settings.fontFamily === "sans" ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => setSettings((s) => ({ ...s, fontFamily: "sans" }))}
+                >
+                  黑體
+                </Button>
+                <Button
+                  variant={settings.fontFamily === "serif" ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => setSettings((s) => ({ ...s, fontFamily: "serif" }))}
+                >
+                  明體
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </header>
 
       {/* 內文 */}
       <article

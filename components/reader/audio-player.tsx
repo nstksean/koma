@@ -20,8 +20,10 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { toast } from "sonner";
 import Link from "next/link";
 import { ttsAudioUrl, ttsTimestampsUrl } from "@/src/tts";
+import { describeFailure, GENERIC_SYNTH_FAILED } from "@/lib/tts-failure";
 import type { CharTimestamp, TimestampsPayload } from "@/src/tts";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -51,7 +53,7 @@ const SLEEP_OPTIONS = [15, 30, 60] as const;
 
 /** 使用者面提示文案(集中管理,避免重複字串漂移)。 */
 const TTS_MESSAGES = {
-  synthFailed: "聽書合成失敗,請稍後再試。",
+  synthFailed: GENERIC_SYNTH_FAILED, // 細分原因見 describeFailure;此為退路
   playFailed: "播放失敗,請再試一次。",
   quotaExhausted: "今日聽書額度已用完,請解鎖或明日再試。",
 } as const;
@@ -248,9 +250,11 @@ export function AudioPlayer({
       setStatus("playing");
       onPlayingChange?.(true);
       start();
-    } catch {
+    } catch (err: unknown) {
+      console.error("[tts] 播放失敗:", err);
       setStatus("error");
       setErrorMsg(TTS_MESSAGES.playFailed);
+      toast.error(TTS_MESSAGES.playFailed);
       onPlayingChange?.(false);
     }
   }, [start, onPlayingChange]);
@@ -346,9 +350,13 @@ export function AudioPlayer({
           const body = (await res.json().catch(() => null)) as {
             error?: string;
           } | null;
+          const msg = body?.error ?? TTS_MESSAGES.quotaExhausted;
           setStatus("error");
-          setErrorMsg(body?.error ?? TTS_MESSAGES.quotaExhausted);
+          setErrorMsg(msg);
           setQuotaHit(true);
+          // 額度用完也彈 toast(top-center 比底部錯誤列更顯眼);錯誤列仍保留
+          // /unlock 入口。背景 prefetch 僅 admin(無限)觸發、不會 429,故不分 userInitiated。
+          toast.error(msg);
           onPlayingChange?.(false);
           return false;
         }
@@ -380,14 +388,19 @@ export function AudioPlayer({
         }
         setStatus("ready"); // 合成完、未播:播放鈕轉可按(loadAndPlay 隨後覆寫為 playing)
         return true;
-      } catch {
+      } catch (err: unknown) {
         // 卸載 abort(非逾時):元件已走,靜默丟棄不 setState。
         if (controller.signal.aborted && !timedOut) return false;
+        // 記錄失敗原因(逾時 / 網路 / HTTP 細分),含技術細節供除錯,不外洩到 UI。
+        // 背景 prefetch 失敗也記,但不彈 toast(沒在看的使用者不該被驚動)。
+        const { user, log } = describeFailure(err, timedOut);
+        console.error("[tts] 合成失敗:", log, err);
         // 逾時 / 網路 / HTTP 錯誤 → 可復原。背景 prefetch 靜默退回 idle(鈕仍可按),
-        // 唯使用者主動觸發才彈錯誤提示,避免背景失敗驚動沒在看的使用者。
+        // 唯使用者主動觸發才彈錯誤列 + toast。
         if (userInitiated) {
           setStatus("error");
-          setErrorMsg(TTS_MESSAGES.synthFailed);
+          setErrorMsg(user);
+          toast.error(user);
           onPlayingChange?.(false);
         } else {
           setStatus("idle");
@@ -444,9 +457,11 @@ export function AudioPlayer({
         onPlayingChange?.(true);
         start();
         refresh(); // 立即把高亮挪到該字
-      } catch {
+      } catch (err: unknown) {
+        console.error("[tts] 播放失敗:", err);
         setStatus("error");
         setErrorMsg(TTS_MESSAGES.playFailed);
+        toast.error(TTS_MESSAGES.playFailed);
         onPlayingChange?.(false);
       }
     },

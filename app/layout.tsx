@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Fraunces, Noto_Sans_TC, Noto_Serif_TC, Source_Sans_3 } from "next/font/google";
+import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
@@ -61,6 +62,9 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           {children}
+          {/* 失敗提示 toast。top-center 避開固定在底部的 player；richColors 讓
+              error 在三套主題下都明顯(語意紅,不依主題明暗)。 */}
+          <Toaster position="top-center" richColors closeButton />
         </ThemeProvider>
       </body>
     </html>
