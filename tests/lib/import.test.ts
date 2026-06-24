@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+vi.mock("@/lib/auth-server", () => ({
+  getServerAuth: async () => ({ role: "guest", identity: "local" }),
+}));
+
 vi.mock("@/db", async () => {
   const helper =
     await vi.importActual<typeof import("@/tests/helpers/test-db")>(

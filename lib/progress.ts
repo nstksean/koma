@@ -2,9 +2,13 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { chapters, progress } from "@/db/schema";
+import { getServerAuth } from "@/lib/auth-server";
 import { newId } from "./ids";
 
-const USER = "local";
+/** 進度的擁有者 = 目前身分（member/admin 各自一桶,guest 按 hashed IP）。 */
+async function currentUserId(): Promise<string> {
+  return (await getServerAuth()).identity;
+}
 
 export interface ReadingProgress {
   readonly chapterId: string;
@@ -15,6 +19,7 @@ export interface ReadingProgress {
 export async function getProgress(
   bookId: string,
 ): Promise<ReadingProgress | null> {
+  const userId = await currentUserId();
   const [row] = await db
     .select({
       chapterId: progress.chapterId,
@@ -23,7 +28,7 @@ export async function getProgress(
     })
     .from(progress)
     .innerJoin(chapters, eq(chapters.id, progress.chapterId))
-    .where(and(eq(progress.userId, USER), eq(progress.bookId, bookId)))
+    .where(and(eq(progress.userId, userId), eq(progress.bookId, bookId)))
     .limit(1);
   return row ?? null;
 }
@@ -34,13 +39,14 @@ export async function saveProgress(
   chapterId: string,
   scrollRatio: number,
 ): Promise<void> {
+  const userId = await currentUserId();
   const clamped = Math.min(1, Math.max(0, scrollRatio));
   const now = new Date();
   await db
     .insert(progress)
     .values({
       id: newId(),
-      userId: USER,
+      userId,
       bookId,
       chapterId,
       scrollRatio: clamped,
