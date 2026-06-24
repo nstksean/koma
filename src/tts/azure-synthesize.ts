@@ -31,16 +31,29 @@ export interface AzureChapterResult {
 
 const SAMPLE_RATE = 24_000; // Raw24Khz16BitMonoPcm
 const MAX_CODE_POINTS = 900; // 每段 code-point 上限(避開 Azure 單次音長上限)
-const MAX_ATTEMPTS = 3; // 單段合成失敗重試上限
-const RETRY_BASE_MS = 250; // 重試退避基數(指數退避 + jitter)
+const MAX_ATTEMPTS = 4; // 單段合成失敗重試上限(429 並發限制需多幾次讓連線槽空出)
+const RETRY_BASE_MS = 250; // 一般錯誤退避基數(指數退避 + jitter)
+// Azure 並發/速率上限(429)的退避基數。免費 F0 只允許 1 條並發連線:同實例多章
+// 或跨實例同章一起合成時,落敗者會收到 wss 握手 429。一般 250ms 退避遠不夠等對方
+// 那條(整章約 10–15s)釋出,故 429 改用較長退避(上限 MAX_BACKOFF_MS,仍在前端
+// 45s 逾時內)。長治本仍是升級 Azure 方案(S0,200 並發)或改共享快取見部署文件。
+const RATE_LIMIT_BASE_MS = 1_500;
+const MAX_BACKOFF_MS = 6_000; // 退避上限,避免單段拖爆前端 45s 逾時
 const TICKS_PER_MS = 10_000; // SDK 100-ns tick → ms
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
-/** 指數退避 + 隨機 jitter:避免對 Azure 連發重試加劇 throttle / thundering herd。 */
-function backoffDelayMs(attempt: number): number {
-  return RETRY_BASE_MS * 2 ** (attempt - 1) + Math.floor(Math.random() * RETRY_BASE_MS);
+/** wss 握手被 Azure 以 429 拒絕(並發/速率上限)→ 用較長退避。 */
+function isRateLimited(err: unknown): boolean {
+  return (err instanceof Error ? err.message : String(err)).includes("429");
+}
+
+/** 指數退避 + 隨機 jitter;429 用較長基數並夾上限,避免對 Azure 連發重試加劇 throttle。 */
+function backoffDelayMs(attempt: number, rateLimited: boolean): number {
+  const base = rateLimited ? RATE_LIMIT_BASE_MS : RETRY_BASE_MS;
+  const exp = Math.min(base * 2 ** (attempt - 1), MAX_BACKOFF_MS);
+  return exp + Math.floor(Math.random() * base);
 }
 
 /**
@@ -151,7 +164,7 @@ async function synthesizeSegmentWithRetry(
         err instanceof Error ? err.message : String(err),
       );
       if (attempt < MAX_ATTEMPTS) {
-        await sleep(backoffDelayMs(attempt));
+        await sleep(backoffDelayMs(attempt, isRateLimited(err)));
       }
     }
   }
