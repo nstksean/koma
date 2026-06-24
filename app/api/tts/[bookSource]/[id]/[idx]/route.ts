@@ -3,7 +3,7 @@ import { open, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 
 import { getChapterAudioMeta } from "@/lib/tts";
-import { resolveAuth } from "@/lib/auth";
+import { getServerAuth } from "@/lib/auth-server";
 import { QuotaError } from "@/lib/tts-quota";
 import { checkTtsRate } from "@/lib/tts-rate-limit";
 import { parseTtsParams } from "./parse-params";
@@ -77,7 +77,11 @@ export async function GET(
   const rate = checkTtsRate(req);
   if (!rate.ok) return rate.response;
   const { bookSource, slug, idxNum, voice } = parsed.params;
-  const auth = resolveAuth(req);
+  // 統一身分入口(better-auth session → 舊 HMAC cookie → guest),好讓 email 登入者
+  // 的額度計在 user:<id> 桶而非訪客 IP 桶。
+  // ponytail: 每次 Range 請求多一次 session DB lookup;若音訊熱路徑出現延遲,
+  //           開 better-auth session.cookieCache 即可免去多數 DB 查詢。
+  const auth = await getServerAuth();
 
   try {
     const file = await getChapterAudioMeta(bookSource, slug, idxNum, auth, voice);

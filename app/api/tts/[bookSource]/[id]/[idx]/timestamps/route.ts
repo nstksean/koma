@@ -1,5 +1,5 @@
 import { getChapterAudioMeta } from "@/lib/tts";
-import { resolveAuth } from "@/lib/auth";
+import { getServerAuth } from "@/lib/auth-server";
 import { QuotaError } from "@/lib/tts-quota";
 import { checkTtsRate } from "@/lib/tts-rate-limit";
 import type { TimestampsPayload } from "@/src/tts";
@@ -24,7 +24,8 @@ export async function GET(
   const rate = checkTtsRate(req);
   if (!rate.ok) return rate.response;
   const { bookSource, slug, idxNum, voice } = parsed.params;
-  const auth = resolveAuth(req);
+  // 統一身分入口(與 audio route 一致),讓 email 登入者額度計在 user:<id> 桶。
+  const auth = await getServerAuth();
 
   try {
     const file = await getChapterAudioMeta(bookSource, slug, idxNum, auth, voice);

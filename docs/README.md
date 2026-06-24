@@ -17,6 +17,7 @@
 ```
 docs/
 ├── how-to/            任務導向。「如何完成 X?」可照做的步驟。
+├── explanation/       理解導向。設計動機、背景脈絡(「為何如此設計」)。
 ├── design/            設計規格(主題 / 字體 / 色彩 / 品牌貓)。
 └── meta/              工程內部產物(不對外)。
     ├── assessments/     一次性技術稽核、競品分析、選型 spike。
@@ -24,7 +25,7 @@ docs/
     └── archive/         (規劃中)已過期、僅供歷史參考的文件。
 ```
 
-> `tutorials/`、`reference/`、`explanation/`、`meta/archive/` 為規劃中象限,**待有第一份內容再連同 README 一起長出來**(目前內容皆屬計畫 / 設計 / 研究,故先不建空目錄)。
+> `tutorials/`、`reference/`、`meta/archive/` 為規劃中象限,**待有第一份內容再連同 README 一起長出來**(目前內容皆屬計畫 / 設計 / 研究,故先不建空目錄)。
 
 ## 撰寫新文件 — 該放哪個目錄?
 
@@ -32,7 +33,7 @@ docs/
 
 - 讀者已知目標、要步驟 → `how-to/`
 - 讀者要查表(API / 路徑 / 慣例) → `reference/`(待建)
-- 讀者想理解某決策或背景 → `explanation/`(待建)
+- 讀者想理解某決策或背景 → `explanation/`
 - 設計規格(主題 / token / 視覺) → `design/`
 - 工程產物(計畫 / 稽核 / 歸檔) → `meta/{plans,assessments,archive}/`
 

@@ -96,6 +96,17 @@ export function guestAuth(ip: string): Auth {
   return { role: "guest", identity: `guest:${ipHash}` };
 }
 
+/**
+ * 書架/進度的「擁有者 key」—— 與額度 identity 分離。
+ *   - 登入者(非 guest):帳號 id 本來就逐人,直接用 identity。
+ *   - guest:用每瀏覽器一個的匿名 cookie id → 各自一桶;沒 cookie 才退回 identity(hashed IP)。
+ * 額度系統不受影響:仍吃 identity(guest = hashed IP),同 IP 共用一桶是刻意的防濫用。
+ */
+export function dataOwner(auth: Auth, guestCookie: string | undefined): string {
+  if (auth.role !== "guest") return auth.identity;
+  return guestCookie ? `guest:${guestCookie}` : auth.identity;
+}
+
 function readCookie(req: Request, name: string): string | undefined {
   const header = req.headers.get("cookie");
   if (!header) return undefined;
@@ -171,4 +182,27 @@ export function resolveSessionId(
   existing: SessionPayload | null,
 ): string {
   return existing && existing.role === role ? existing.id : newSessionId();
+}
+
+// ─── better-auth 橋接(Email OTP 登入)──────────────────────────────────────
+// better-auth 管真實、已驗證的 email 身分;額度仍走 tts_usage,登入者額度 identity =
+// `user:<userId>`,與舊 admin:/member:/guest:/iqt: 命名空間共存(零遷移)。role 由 email
+// 決定:ADMIN_EMAILS 命中 = admin、其餘已驗證 email = member。解析入口見 lib/auth-server.ts。
+
+/** admin email 允許清單(逗號分隔,小寫正規化)。 */
+export function adminEmails(): string[] {
+  return (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/** email → role:在 ADMIN_EMAILS 清單 = admin,其餘已登入 email = member。 */
+export function roleForEmail(email: string): "admin" | "member" {
+  return adminEmails().includes(email.trim().toLowerCase()) ? "admin" : "member";
+}
+
+/** better-auth 登入者 → Auth。額度 identity 走 `user:<userId>` 命名空間。 */
+export function userAuth(userId: string, email: string): Auth {
+  return { role: roleForEmail(email), identity: `user:${userId}` };
 }

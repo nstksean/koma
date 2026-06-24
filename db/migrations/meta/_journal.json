@@ -15,6 +15,13 @@
       "when": 1782182189713,
       "tag": "0001_peaceful_jazinda",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1782284709606,
+      "tag": "0002_good_husk",
+      "breakpoints": true
     }
   ]
 }

@@ -17,6 +17,10 @@ import {
   redeemCode,
   resolveSessionId,
   guestAuth,
+  dataOwner,
+  adminEmails,
+  roleForEmail,
+  userAuth,
   SESSION_COOKIE,
 } from "@/lib/auth";
 import { accessCodes } from "@/db/schema";
@@ -111,6 +115,61 @@ describe("redeemCode", () => {
   it("無效碼 / 空白 → null", async () => {
     expect(await redeemCode("nope")).toBeNull();
     expect(await redeemCode("   ")).toBeNull();
+  });
+});
+
+describe("better-auth 橋接(email → role / identity)", () => {
+  beforeEach(() => {
+    vi.stubEnv("ADMIN_EMAILS", "boss@koma.app, admin@iqt.ai");
+  });
+
+  it("ADMIN_EMAILS 命中 → admin(去空白、大小寫不敏感)", () => {
+    expect(roleForEmail("boss@koma.app")).toBe("admin");
+    expect(roleForEmail("  ADMIN@IQT.AI ")).toBe("admin");
+  });
+
+  it("非清單 email → member", () => {
+    expect(roleForEmail("reader@gmail.com")).toBe("member");
+  });
+
+  it("adminEmails 正規化逗號清單(去空白、轉小寫、濾空)", () => {
+    vi.stubEnv("ADMIN_EMAILS", " A@x.com ,, B@Y.com ");
+    expect(adminEmails()).toEqual(["a@x.com", "b@y.com"]);
+  });
+
+  it("userAuth → identity 用 user:<userId> 命名空間、role 依 email", () => {
+    expect(userAuth("u-123", "reader@gmail.com")).toEqual({
+      role: "member",
+      identity: "user:u-123",
+    });
+    expect(userAuth("u-999", "boss@koma.app")).toEqual({
+      role: "admin",
+      identity: "user:u-999",
+    });
+  });
+
+  it("ADMIN_EMAILS 未設 → 任何 email 皆 member", () => {
+    vi.stubEnv("ADMIN_EMAILS", "");
+    expect(roleForEmail("boss@koma.app")).toBe("member");
+  });
+});
+
+describe("dataOwner(書架/進度擁有者)", () => {
+  it("guest 有 cookie → 各自一桶(guest:<cookie>),與 IP identity 無關", () => {
+    const a = dataOwner(guestAuth("1.2.3.4"), "uuid-aaa");
+    const b = dataOwner(guestAuth("1.2.3.4"), "uuid-bbb");
+    expect(a).toBe("guest:uuid-aaa");
+    expect(a).not.toBe(b); // 同 IP 不同瀏覽器 → 不共用
+  });
+
+  it("guest 無 cookie → 退回 hashed IP identity(後備)", () => {
+    const auth = guestAuth("1.2.3.4");
+    expect(dataOwner(auth, undefined)).toBe(auth.identity);
+  });
+
+  it("登入者(非 guest)→ 直接用帳號 identity,忽略 cookie", () => {
+    expect(dataOwner({ role: "member", identity: "user:u-1" }, "uuid-x")).toBe("user:u-1");
+    expect(dataOwner({ role: "admin", identity: "admin:a" }, undefined)).toBe("admin:a");
   });
 });
 

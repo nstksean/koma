@@ -55,10 +55,9 @@ export async function redeemCodeAction(
   redirect("/");
 }
 
-/** 登出：清掉 session + 角色提示 cookie。 */
+/** 登出（清舊 HMAC session + 角色提示 cookie）。導頁由呼叫端負責(見 LogoutButton 雙系統登出)。 */
 export async function signOutAction(): Promise<void> {
   const store = await cookies();
   store.delete(SESSION_COOKIE);
   store.delete(ROLE_HINT_COOKIE);
-  redirect("/unlock");
 }

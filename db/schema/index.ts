@@ -15,3 +15,7 @@ export type { AccessCode, NewAccessCode } from "./access-codes";
 
 export { ttsUsage } from "./tts-usage";
 export type { TtsUsage, NewTtsUsage } from "./tts-usage";
+
+// better-auth 核心表（Email OTP 登入）。與上面邀請碼系統並存。
+export { user, session, account, verification, rateLimit } from "./auth";
+export type { User, Session } from "./auth";

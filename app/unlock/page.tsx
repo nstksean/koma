@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Mail } from "lucide-react";
 
 import { getServerAuth } from "@/lib/auth-server";
 import { getQuotaStatus } from "@/lib/tts-quota";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { UnlockForm } from "./unlock-form";
-import { signOutAction } from "./actions";
+import { LogoutButton } from "./logout-button";
 
 const ROLE_LABEL: Record<string, string> = {
   admin: "管理員",
@@ -52,13 +52,20 @@ export default async function UnlockPage() {
       </section>
 
       {auth.role === "guest" ? (
-        <UnlockForm />
+        <div className="flex flex-col gap-4">
+          <Link href="/login" className={buttonVariants({ className: "w-fit gap-2" })}>
+            <Mail className="size-4" />
+            用 email 登入(跨裝置同步)
+          </Link>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            或貼邀請碼
+            <span className="h-px flex-1 bg-border" />
+          </div>
+          <UnlockForm />
+        </div>
       ) : (
-        <form action={signOutAction}>
-          <Button type="submit" variant="outline" className="w-fit">
-            登出
-          </Button>
-        </form>
+        <LogoutButton />
       )}
     </main>
   );

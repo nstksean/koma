@@ -4,6 +4,7 @@ vi.mock("server-only", () => ({}));
 
 vi.mock("@/lib/auth-server", () => ({
   getServerAuth: async () => ({ role: "guest", identity: "local" }),
+  getServerDataOwner: async () => "local",
 }));
 
 vi.mock("@/db", async () => {

@@ -2,12 +2,12 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { chapters, progress } from "@/db/schema";
-import { getServerAuth } from "@/lib/auth-server";
+import { getServerDataOwner } from "@/lib/auth-server";
 import { newId } from "./ids";
 
-/** 進度的擁有者 = 目前身分（member/admin 各自一桶,guest 按 hashed IP）。 */
+/** 進度的擁有者(member/admin 各自一桶,guest 按每瀏覽器 cookie id)。 */
 async function currentUserId(): Promise<string> {
-  return (await getServerAuth()).identity;
+  return getServerDataOwner();
 }
 
 export interface ReadingProgress {
