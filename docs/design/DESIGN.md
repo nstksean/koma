@@ -76,7 +76,7 @@
 - **Code/Data:** 暫無需求;若需要用 DM Mono。
 - **Loading:** Google Fonts(`Fraunces`, `Noto Sans TC`, `Noto Serif TC`, `Source Sans 3`)。上 production 建議自架 / subset 思源系字重以控體積。
 - **Scale(rem base 16px):**
-  - 閱讀內文:預設 20px(可調 小18 / 中20 / 大23),`line-height` **1.95**,行寬約 **19–21em**(≈28–38 CJK 字)。
+  - 閱讀內文:預設 20px(可調 小18 / 中20 / 大23),`line-height` **1.85**(暫定;待真機 A/B 1.75↔1.95,見 Decisions Log),行寬約 **19–21em**(≈28–38 CJK 字)。
   - 章名:Noto Sans TC 700,24–28px。
   - 章節 eyebrow:Fraunces 12–13px,letter-spacing .12em,uppercase。
   - UI:14–15px。標題(外殼):Fraunces 28–34px。
@@ -126,3 +126,4 @@
 | 2026-06-15 | 內文改黑體為主、明體降為可選 | 使用者回饋:明體辨別度太低 |
 | 2026-06-15 | 三方向全做成可切換主題,**預設 Cat-Eye Dusk** | 使用者要求保留三者並指定貓眼當 default |
 | 2026-06-15 | 保留線條貓為品牌角色 | 使用者:「貓貓的 icon 很可愛」 |
+| 2026-06-24 | 內文 line-height 1.95 → 1.85(暫定,待真機 A/B 1.75↔1.95) | `/evidence-check`:反對 1.95 的可讀性證據幾乎全是拉丁排版,CJK 需較鬆行距、無直接實證;1.85 先從未驗證的高端收回,真機測完再定。對比已實算過 AAA(內文 14.5:1) |
