@@ -100,15 +100,30 @@ Build command 用預設的 `next build` 即可,不要加 migration。
 
 ---
 
-## ⚠️ TTS 上線前必處理:檔案快取不適用 serverless
+## TTS(聽書)上線注意事項
 
-TTS 合成結果目前寫在 `process.cwd()/data/tts/`([lib/tts.ts:32](../../lib/tts.ts#L32),`mkdir`/`writeFile`)。**Vercel serverless 的檔案系統是唯讀且每次 invocation 隔離**(只有 `/tmp` 可寫,且不跨請求保留),所以這套磁碟快取在 Vercel 上不會生效 —— 每次重播都會重打 TTS API、燒額度。
+聽書已上線。以下三點是踩過的雷與已知限制,改動 TTS 前必讀。
 
-目前 TTS 還在 spike / 階段 3,**reader 先上線不受影響**。等 TTS 真要上 production,擇一:
+### 1. ✅ 已修:Azure Speech SDK 在 Vercel / Node 24 的 wss 連線
 
-1. **改用物件儲存**:Vercel Blob / Cloudflare R2 / S3 當快取後端(改 [lib/tts.ts](../../lib/tts.ts) 的讀寫層)。
-2. **TTS 走另一個持久化 host**:把合成 + 快取放到有真實磁碟的 service(Fly / VPS),web 仍留在 Vercel。
+Azure Speech SDK 透過 **wss WebSocket** 合成。在 Vercel(Node 24)上會踩兩個雷,皆已修:
 
-決策時再評估,別現在預先做。
+- **不能被 Next bundle**:必須列入 `serverExternalPackages`([next.config.ts](../../next.config.ts)),否則打包後其內部 `ws` 解析失效。
+- **不能用 Node 全域 WebSocket**:Node ≥22 暴露實驗性全域 `WebSocket`(undici),SDK 一偵測到就優先用它,但連 Azure wss 會間歇性 1006 斷線。已在 [src/tts/azure-synthesize.ts](../../src/tts/azure-synthesize.ts) 設 `WebsocketMessageAdapter.forceNpmWebSocket = true` 強制走穩定的 npm `ws`。
+
+> 症狀:聽書整路 500「聽書服務暫時無法使用」,server log 出現 `StatusCode: 1006 ... wss://<region>.tts.speech.microsoft.com`。
+
+### 2. ⚠️ Azure 方案併發上限(429)
+
+免費 **F0 只允許 1 條並發 wss 連線**。同實例多章、或跨實例同章一起合成時,落敗者會收到握手 **429**(`Unexpected server response: 429`)。[src/tts/azure-synthesize.ts](../../src/tts/azure-synthesize.ts) 已對 429 加長退避(1.5s 起、上限 6s、4 次)讓單次碰撞自癒,但**真正治本是升級到 S0(標準,200 並發)**。多人同時聽 / 高併發前務必升級。
+
+### 3. ⚠️ 落地快取為 per-instance ephemeral(`/tmp`)
+
+合成結果寫在 `os.tmpdir()/koma-tts/`([lib/tts.ts:38](../../lib/tts.ts#L38))。`/tmp` 在 Vercel 可寫但**每個 function instance 各自獨立、不跨請求保留**,所以:
+
+- 同一章會被不同 instance 各自重合成(燒額度 + 增加 §2 的併發碰撞)。
+- cache 命中不可靠(timestamps route 與 audio route 可能落在不同 instance)。
+
+規模化的正解是 **共享持久化儲存**(Vercel Blob / R2 / S3)當快取後端,改 [lib/tts.ts](../../lib/tts.ts) 讀寫層:合成一次、所有 instance 共讀。單人輕量使用目前可接受,故先不做。
 
 另見:[../README.md](../README.md) how-to 總覽。
