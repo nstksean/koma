@@ -3,6 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { getChapterView } from "@/lib/books";
@@ -28,8 +29,13 @@ const DEFAULT_VOICE = "zh-TW-HsiaoChenNeural";
 /** 快取 json schema 版本：日後改 charIndex 約定/欄位時用來作廢舊檔。 */
 const SCHEMA_VERSION = 1 as const;
 
-/** 快取根目錄：data/tts/<bookSource>/<voiceSafe>/<slugSafe>/<idx>.{wav,json}。 */
-const CACHE_ROOT = path.join(process.cwd(), "data", "tts");
+/**
+ * 快取根目錄：<tmpdir>/koma-tts/<bookSource>/<voiceSafe>/<slugSafe>/<idx>.{wav,json}。
+ * ponytail: 用 os.tmpdir()(Vercel 上 = /tmp，function 唯一可寫處)。ephemeral 且
+ * per-instance —— 暖實例內重播命中快取，冷啟動/換實例會重合成、重燒 Azure 額度。
+ * 要跨請求持久免重燒，升級成物件儲存(Vercel Blob/R2/S3)，見 docs/how-to/deploy.md。
+ */
+const CACHE_ROOT = path.join(os.tmpdir(), "koma-tts");
 
 /**
  * route handler 拿到的章節音訊（落地後）。
