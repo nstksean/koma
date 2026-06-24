@@ -1,6 +1,19 @@
 import "server-only";
 import * as sdk from "microsoft-cognitiveservices-speech-sdk";
+// SDK 內部模組(barrel 未匯出);用來強制走 npm `ws`,見下方 forceNpmWebSocket。
+import { WebsocketMessageAdapter } from "microsoft-cognitiveservices-speech-sdk/distrib/lib/src/common.browser/WebsocketMessageAdapter.js";
 import type { AzureBoundary, CharTimestamp } from "./types";
+
+/**
+ * 強制 Azure SDK 用 npm `ws` 套件,而非 Node 的全域 WebSocket。
+ *
+ * Node ≥22(Vercel 預設 Node 24)暴露實驗性的全域 `WebSocket`(undici)。SDK 一偵測到
+ * 全域 WebSocket 就優先用它(WebsocketMessageAdapter.js:71),但 undici 的 WebSocket 在
+ * Vercel serverless 連 `wss://...speech.microsoft.com` 會間歇性以 1006 斷線
+ * (「Unable to contact server」)→ 整條聽書 500。SDK 為此預留 forceNpmWebSocket 旗標,
+ * 設 true 即改用穩定的 `ws`(SDK 既有相依)。server-only 模組,無人靠全域 WebSocket,安全。
+ */
+WebsocketMessageAdapter.forceNpmWebSocket = true;
 import { azureWordsToChars, utf16ToCodePointOffset } from "./azure-normalize";
 import { chunkContent, type ContentChunk } from "./chunk";
 import { pcmBytesToMs, shiftCharTimestamps } from "./stitch";
