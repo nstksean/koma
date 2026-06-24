@@ -15,6 +15,7 @@ import {
   hashCode,
   resolveAuth,
   redeemCode,
+  resolveSessionId,
   guestAuth,
   SESSION_COOKIE,
 } from "@/lib/auth";
@@ -73,7 +74,14 @@ describe("redeemCode", () => {
   });
 
   it("admin env 碼 → role admin", async () => {
-    expect((await redeemCode("super-secret-admin"))?.role).toBe("admin");
+    expect(await redeemCode("super-secret-admin")).toBe("admin");
+  });
+
+  it("env 推薦碼 → role member", async () => {
+    vi.stubEnv("REFERRAL_CODES", "ref-alice, ref-bob");
+    expect(await redeemCode("ref-alice")).toBe("member");
+    expect(await redeemCode("ref-bob")).toBe("member");
+    expect(await redeemCode("ref-nobody")).toBeNull();
   });
 
   it("DB member 碼(未停用)→ role member", async () => {
@@ -85,8 +93,7 @@ describe("redeemCode", () => {
       disabled: false,
       createdAt: new Date(),
     });
-    const r = await redeemCode("invite-xyz");
-    expect(r).toEqual({ role: "member", id: "code1" });
+    expect(await redeemCode("invite-xyz")).toBe("member");
   });
 
   it("已停用的碼 → null", async () => {
@@ -104,5 +111,22 @@ describe("redeemCode", () => {
   it("無效碼 / 空白 → null", async () => {
     expect(await redeemCode("nope")).toBeNull();
     expect(await redeemCode("   ")).toBeNull();
+  });
+});
+
+describe("resolveSessionId(逐人額度)", () => {
+  it("同角色續期 → 沿用既有 id(重貼不重置額度)", () => {
+    expect(resolveSessionId("member", { role: "member", id: "person-1" })).toBe("person-1");
+  });
+
+  it("無既有 session → 鑄新 id;兩次互異(各自一桶)", () => {
+    const a = resolveSessionId("member", null);
+    const b = resolveSessionId("member", null);
+    expect(a).not.toBe(b);
+    expect(a.length).toBeGreaterThan(8);
+  });
+
+  it("角色不同 → 不沿用,鑄新 id", () => {
+    expect(resolveSessionId("member", { role: "admin", id: "admin-x" })).not.toBe("admin-x");
   });
 });

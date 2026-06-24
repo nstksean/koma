@@ -5,7 +5,9 @@ import { redirect } from "next/navigation";
 
 import {
   redeemCode,
+  resolveSessionId,
   signSession,
+  verifySession,
   SESSION_COOKIE,
   SESSION_MAX_AGE,
 } from "@/lib/auth";
@@ -27,11 +29,15 @@ export async function redeemCodeAction(
   }
 
   const code = String(form.get("code") ?? "");
-  const session = await redeemCode(code);
-  if (!session) return { error: "邀請碼無效或已停用" };
+  const role = await redeemCode(code);
+  if (!role) return { error: "邀請碼無效或已停用" };
 
   const store = await cookies();
-  store.set(SESSION_COOKIE, signSession(session), {
+  // 逐人額度:沿用既有同角色 session 的 id(重貼不重置額度),否則鑄新的 person id。
+  const existing = verifySession(store.get(SESSION_COOKIE)?.value);
+  const id = resolveSessionId(role, existing);
+
+  store.set(SESSION_COOKIE, signSession({ role, id }), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -39,7 +45,7 @@ export async function redeemCodeAction(
     maxAge: SESSION_MAX_AGE,
   });
   // 非權威角色提示(非 httpOnly):前端據此決定要不要自動 prefetch。
-  store.set(ROLE_HINT_COOKIE, session.role, {
+  store.set(ROLE_HINT_COOKIE, role, {
     httpOnly: false,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",

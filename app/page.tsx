@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { BookOpen, ChevronRight, Search, Upload } from "lucide-react";
+import { BookOpen, ChevronRight, Search, Upload, UserRound } from "lucide-react";
 import { getContinueReading, listLibrary } from "@/lib/library";
+import { getServerAuth } from "@/lib/auth-server";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { KomaCat } from "@/components/brand/koma-cat";
 import { buttonVariants } from "@/components/ui/button";
+
+const ROLE_LABEL: Record<string, string> = { admin: "管理員", member: "會員", guest: "訪客" };
 
 async function searchAction(formData: FormData) {
   "use server";
@@ -13,7 +16,11 @@ async function searchAction(formData: FormData) {
 }
 
 export default async function HomePage() {
-  const [items, cont] = await Promise.all([listLibrary(), getContinueReading()]);
+  const [items, cont, auth] = await Promise.all([
+    listLibrary(),
+    getContinueReading(),
+    getServerAuth(),
+  ]);
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
@@ -25,7 +32,16 @@ export default async function HomePage() {
           </h1>
           <p className="text-sm text-muted-foreground">零廣告 · 乾淨 · 中文小說閱讀器</p>
         </div>
-        <ThemeToggle />
+        <div className="flex items-center gap-1">
+          <Link
+            href="/unlock"
+            className={buttonVariants({ variant: "ghost", size: "sm" })}
+            aria-label="帳號與聽書額度"
+          >
+            <UserRound /> {ROLE_LABEL[auth.role] ?? auth.role}
+          </Link>
+          <ThemeToggle />
+        </div>
       </header>
 
       {cont && (

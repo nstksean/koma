@@ -41,3 +41,4 @@ yarn-error.log*
 # python forced-alignment POC venv (scripts/forced-align-poc.py)
 /.venv-align
 __pycache__/
+.vercel

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
@@ -122,25 +122,53 @@ function adminCodes(): string[] {
     .filter(Boolean);
 }
 
+/** 推薦碼（逗號分隔,明碼）→ 命中即 member。與 admin 一樣走 env、不入庫,適合少數固定的好記分享碼。 */
+function referralCodes(): string[] {
+  return (process.env.REFERRAL_CODES ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 /**
- * 驗證邀請碼 → 回 session payload（供種 cookie），失敗回 null。
- * admin 走 env（constant-time 比對）;member 查 DB codeHash（須未停用）。
+ * 驗證邀請碼 → 回它授予的角色,失敗回 null。只認證「碼」,不決定 session id;
+ * 逐人 id 由 resolveSessionId 在 action 端決定,好讓每個人各有額度桶。
+ * admin 走 env(constant-time 比對);member 來源有二:env REFERRAL_CODES(好記分享碼)
+ * 或 DB codeHash(須未停用)。
  */
-export async function redeemCode(code: string): Promise<SessionPayload | null> {
+export async function redeemCode(code: string): Promise<"admin" | "member" | null> {
   const trimmed = code.trim();
   if (!trimmed) return null;
 
   for (const ac of adminCodes()) {
-    if (safeEqual(ac, trimmed)) {
-      return { role: "admin", id: hashCode(trimmed).slice(0, 12) };
-    }
+    if (safeEqual(ac, trimmed)) return "admin";
+  }
+  for (const rc of referralCodes()) {
+    if (safeEqual(rc, trimmed)) return "member";
   }
 
   const rows = await db
     .select()
     .from(accessCodes)
     .where(and(eq(accessCodes.codeHash, hashCode(trimmed)), eq(accessCodes.disabled, false)));
-  if (rows.length > 0) return { role: "member", id: rows[0].id };
+  return rows.length > 0 ? "member" : null;
+}
 
-  return null;
+/** 鑄一個新的 person id(放進簽章 cookie;只需唯一、不需保密——cookie 已被 HMAC 保護)。 */
+export function newSessionId(): string {
+  return randomUUID();
+}
+
+/**
+ * 決定本次 redeem 用哪個 session id —— 逐人額度的核心。
+ * 同角色續期就沿用既有 id(重貼碼/續期不重置額度);否則鑄新 id。
+ * 每個瀏覽器(cookie jar)= 一個人 = 一個額度桶,兌不同碼/不同人就各自獨立計額。
+ * ponytail: 清掉 cookie 後重貼會拿到新桶(等同訪客換 IP),這是無帳號系統的天花板;
+ *           要真正防重置得引入帳號或伺服器端裝置綁定,本期不做。
+ */
+export function resolveSessionId(
+  role: "admin" | "member",
+  existing: SessionPayload | null,
+): string {
+  return existing && existing.role === role ? existing.id : newSessionId();
 }
