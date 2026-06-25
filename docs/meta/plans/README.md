@@ -10,7 +10,8 @@ Koma 的實作計畫與分階段執行文件。每份檔案開頭標註日期與
 | [01-foundation-and-data-layer.md](01-foundation-and-data-layer.md) | 執行文件①:專案地基 + Drizzle schema + migration。 | ✅ 已完成(`276af08`) |
 | [02-fetch-and-api-layer.md](02-fetch-and-api-layer.md) | 執行文件②:`SourceAdapter` 收斂 + 資料層 + 快取 + fixture 測試。 | ✅ 已完成(`276af08`) |
 | [03-pages-and-reader-ux.md](03-pages-and-reader-ux.md) | 執行文件③:頁面 + 閱讀器體驗 + E2E + DoD 驗收。 | ✅ 已完成(`276af08` 起) |
-| [04-stage3-tts-pipeline.md](04-stage3-tts-pipeline.md) | 執行文件④:階段 3 TTS 聽書 pipeline(音源層 / 播放管線層解耦)。 | 規劃中 |
+| [04-stage3-tts-pipeline.md](04-stage3-tts-pipeline.md) | 執行文件④:階段 3 TTS 聽書 pipeline(音源層 / 播放管線層解耦)。 | 🚧 實作中 |
+| [better-auth-email-otp.md](better-auth-email-otp.md) | better-auth + Email OTP 登入(雙系統並存、額度綁 userId)。 | ✅ 已上線(`11697c6`) |
 | [evidence-ios-pwa-background-audio.md](evidence-ios-pwa-background-audio.md) | `/evidence-check` 報告:iOS web/PWA 背景音訊可靠性。驗證 `mvp-stage0-plan.md` §8.5。 | 調查報告 · **推進前必讀** |
 
 > **01–03 已畢業(2026-06-17 對齊):** 三份執行文件原自述「尚未動程式碼」,現已全部實作落地(initial commit `276af08` 起),狀態行已標 ✅ 並各自註明與計畫的偏差(02:Route Handlers→Server Actions;03:首發來源 czbooks→ttkan)。stage-0 §7 DoD 六項實質達成。
