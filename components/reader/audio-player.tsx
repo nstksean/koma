@@ -614,6 +614,8 @@ export function AudioPlayer({
           <Button
             variant="default"
             size="icon"
+            // ponytail: 主控鈕放大為 48px 圓鈕 + 24px 字符(原 40px 方殼內 16px 字符太空)
+            className="size-12 rounded-full [&_svg]:size-6"
             aria-label={isPlaying ? "暫停" : "播放"}
             disabled={isLoading}
             onClick={handlePlayPause}

@@ -193,12 +193,15 @@ export function ReaderView({
       setScrollPct(max > 0 ? Math.min(100, (window.scrollY / max) * 100) : 0);
     }
     function onScroll() {
+      // 兩個副作用共用同一道 rAF 節流閘:原本 debounce 重設在每個原生 scroll
+      // 事件(60–100/s)都跑 clearTimeout+setTimeout,改為只在排 rAF 那幀重設,
+      // 把 timer churn 收斂到幀率;debounce 仍在停止捲動後 SAVE_DELAY 觸發(等價)。
       if (!rafPending.current) {
         rafPending.current = true;
         requestAnimationFrame(updatePct);
+        if (saveTimer.current) clearTimeout(saveTimer.current);
+        saveTimer.current = setTimeout(flushProgress, SAVE_DELAY);
       }
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(flushProgress, SAVE_DELAY);
     }
     function onHide() {
       if (document.visibilityState === "hidden") flushProgress();
