@@ -40,7 +40,7 @@
 | T3 | 實作 **Azure provider**（過渡暫代） | `azureProvider`（Batch synthesis → audio + word boundary JSON）；詞→字均分已備 [`src/tts/azure-normalize.ts`](../../../src/tts/azure-normalize.ts) | T2、`scripts/spike-tts-azure.ts` |
 | T4 | 設計 **timestamp JSON schema** + per-chapter 合成流程 | ✅ schema 定稿為真型別 `ChapterAudio`/`CharTimestamp`（§3、`src/tts/types.ts`） | T2 |
 | T5 | 設計 **音檔快取策略**（per-chapter 預合成、落地、失效） | 快取規格（§4） | T3/T4 |
-| T6 | 選定 / 接上 **PlayerEngine（native plugin）** | 見 [`spike-native-plugin.md`](../assessments/spike-native-plugin.md) | native plugin 選型 |
+| T6 | 選定 / 接上 **PlayerEngine（native plugin）** | 🚧 **選型 ✅ 定案（2026-06-25）：採 `@capgo/capacitor-native-audio`（gate 原始碼查證通過，見 [`spike-native-plugin.md`](../assessments/spike-native-plugin.md) §5）**；Capacitor scaffold 已裝（[`capacitor.config.ts`](../../../capacitor.config.ts)，env `server.url`）。⏳ 待:`cap add ios` + web 層 `PlayerEngine` 接 plugin + 真機 §4 🔬 驗證 | ✅ 選型已解 |
 | T7 | 實作 **逐字高亮同步器**（binary-search timing map + 變速換算） | ⏳ **核心 `activeCharIndex` ✅ 2026-06-22 已實作 + 單測** [`src/tts/sync.ts`](../../../src/tts/sync.ts)；變速 rAF 補幀 / seek / 接 player 仍待 T6 | T4、T6 |
 | T8 | 接上 **IQT provider**（換源驗證：上層不動） | `iqtProvider` | T1、T2 |
 | T9 | DoD 驗收（§7） | 整條鏈路在實機綠燈 | T1–T8 |

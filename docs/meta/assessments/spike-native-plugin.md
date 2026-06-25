@@ -1,8 +1,8 @@
 # Spike — Capacitor native audio plugin 選型（聽書背景播放）
 
-**日期**：2026-06-15
+**日期**：2026-06-15（2026-06-25 補：選型 gate 已以原始碼查證解除，見 §4/§5）
 **對應**：階段 3（TTS 聽書）；[`mvp-stage0-plan.md` §8.5 修正 1](../plans/mvp-stage0-plan.md)、[`evidence-ios-pwa-background-audio.md`](../plans/evidence-ios-pwa-background-audio.md)
-**狀態**：📝 選型調查（不進 app 實裝；本文件只做選型與待驗清單）
+**狀態**：✅ **選型定案** —— gate（`MPRemoteCommandCenter`）已以 `@capgo/capacitor-native-audio` v8.4.14 iOS 原始碼查證**通過**，採用該 plugin（不自寫 thin plugin）。剩餘為實機行為驗證（§4 標 🔬）。
 
 > **一句話**：階段 3 走 **Capacitor + 底層 AVPlayer 的 native audio plugin**（重用整個 Next.js web 閱讀器），
 > 而 plugin 選型的**唯一缺證關鍵**是：該 plugin 是否自接 `MPRemoteCommandCenter`（iOS 鎖屏 / 控制中心 / 耳機控制）。
@@ -73,27 +73,33 @@
 
 ---
 
-## 4. 待實機 / 待上網確認清單（本環境無法定論者）
+## 4. 確認清單(✅ = 原始碼已查證解除；🔬 = 仍需實機驗證)
 
-下列每項都需**真機（實體 iPhone，非模擬器，因背景音訊 / 鎖屏行為模擬器不準）** 或上網查對應版本原始碼確認：
+**gate 已解除(2026-06-25,讀 `@capgo/capacitor-native-audio` v8.4.14 `ios/Sources/NativeAudioPlugin/Plugin.swift`):**
 
-- [ ] **★ `@capgo/native-audio` 目標版本是否自接 `MPRemoteCommandCenter`**（鎖屏 / 控制中心 / 耳機的 play/pause/next/prev/seek）—— 查 plugin 的 iOS Swift 原始碼是否有 `MPRemoteCommandCenter.shared()` 註冊。**這是整個選型的 gate。**
-- [ ] 是否設定 `MPNowPlayingInfoCenter`（鎖屏顯示書名 / 章節 / 封面 / 進度條）。
-- [ ] 是否在 iOS 設定 `AVAudioSession` category = `.playback` 且 active。
-- [ ] **螢幕關閉 + 鎖屏 + 連續播放 30 分鐘以上**不斷音（對應 evidence 文件最嚴苛情境）。
-- [ ] **一章播完自動接下一章**（背景 / 鎖屏狀態下）—— 對應 audiobookshelf #2655 的 iOS 痛點。
-- [ ] **變速（0.5×–3×）** 是否支援、變速後鎖屏進度與逐字高亮是否仍對齊。
-- [ ] seek 到任意 ms 是否準確（逐字回跳需要）。
-- [ ] 來電 / 其他 app 搶音（interruption）後能否正確暫停與續播。
-- [ ] currentTime 回拋頻率是否足夠支撐 char-level 逐字高亮（~100ms 一字，見 04）；不足則需自寫層提高回拋率或在 web 層用 rAF 內插。
-- [ ] Android 對等能力（ExoPlayer / `MediaSessionCompat`）—— MVP 以 iOS 為主，但記錄落差。
+- [x] **★ `MPRemoteCommandCenter` 自接** —— Plugin.swift 註冊 `playCommand` / `pauseCommand` / `stopCommand` / `togglePlayPauseCommand` / `skipForwardCommand`(15s)/ `skipBackwardCommand`(15s)/ `changePlaybackPositionCommand`(scrubber seek)。**gate 通過。** ⚠️ **無 `nextTrackCommand` / `previousTrackCommand`** —— 鎖屏沒有「上一章/下一章」track 鍵,只有 ±15s skip + 進度條;自動跳章靠 web 層收 `complete` 事件,鎖屏「手動」跳章缺失(MVP 可接受,要補再加 thin patch)。
+- [x] `MPNowPlayingInfoCenter` 有設定(鎖屏資訊卡)。
+- [x] `AVAudioSession.Category.playback`(`+ .mixWithOthers`)且接 interruption begin/end(`shouldResume`)。
+- [x] 變速:`setRate`(clamp MinRate..MaxRate)。seek:`setCurrentTime` / `getCurrentTime`(ms)。
+- [x] 事件:`complete`(→ 自動跳章)、`currentTime`(→ 逐字高亮)、`playbackState`。
+
+**仍需實機(實體 iPhone,模擬器背景/鎖屏行為不準):**
+
+- [ ] 🔬 **螢幕關閉 + 鎖屏 + 連續播放 30 分鐘以上**不斷音(evidence 文件最嚴苛情境)—— 需 Info.plist `UIBackgroundModes: ["audio"]`。
+- [ ] 🔬 **一章播完自動接下一章**(背景/鎖屏)—— web 層收 `complete` 後續播下一章 audio URL。
+- [ ] 🔬 變速後鎖屏進度與逐字高亮是否仍對齊。
+- [ ] 🔬 seek 到任意 ms 是否準確(逐字回跳)。
+- [ ] 🔬 來電/其他 app 搶音(interruption)後能否正確暫停與續播。
+- [ ] 🔬 **`currentTime` 事件回拋頻率**是否足夠支撐 char-level 逐字高亮(~100ms 一字,見 04);不足則 web 層用 rAF 內插(04 §5.1 已備此退路)。
+- [ ] 🔬 Android 對等能力(ExoPlayer / `MediaSessionCompat`)—— MVP 以 iOS 為主,僅記錄落差。
 
 ---
 
 ## 5. 結論
 
 - **方向確立**：Capacitor + native audio plugin，重用整個 web，不重寫、不上 RN。
-- **選型 gate**：`@capgo/native-audio` 是否自接 `MPRemoteCommandCenter` —— **本環境無法定論，標為實機待驗**；驗過則採用，否則走「自寫 thin plugin」退路（保證接得到鎖屏控制）。
+- **選型 gate ✅ 已解除（2026-06-25）**：`@capgo/capacitor-native-audio` v8.4.14 的 iOS 原始碼**確實自接 `MPRemoteCommandCenter` + `MPNowPlayingInfoCenter` + `AVAudioSession(.playback)` + interruption + `setRate` + seek + `complete`/`currentTime` 事件** → **採用此 plugin,不走自寫 thin plugin**（省下整支 Swift plugin 的成本）。唯一落差:鎖屏無 prev/next track 鍵（只有 ±15s skip + scrubber），MVP 可接受。
+- **已 scaffold（2026-06-25）**：`@capacitor/core`/`cli`/`ios` + plugin 已裝;[`capacitor.config.ts`](../../../capacitor.config.ts) 走 env-driven `server.url`（`KOMA_NATIVE_URL`,reuse-web 模型）。**待真機端跑 §4 的 🔬 清單**;`npx cap add ios` + Info.plist `UIBackgroundModes:["audio"]` 須在使用者 Mac（Xcode/CocoaPods）執行。
 - **解耦保險**：對 web 暴露 `PlayerEngine` 抽象（見 [`04`](../plans/04-stage3-tts-pipeline.md)），讓 plugin 可替換、選型結果不綁死下游。
 
 ---

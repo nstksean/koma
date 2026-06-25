@@ -15,6 +15,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
+    "cap:sync": "cap sync ios",
+    "cap:ios": "cap open ios",
     "spike": "tsx scripts/spike-ttkan.ts",
     "spike:tts:azure": "tsx --env-file-if-exists=.env.local scripts/spike-tts-azure.ts",
     "spike:tts:iqt": "tsx --env-file-if-exists=.env.local scripts/spike-tts-iqt.ts",
@@ -23,6 +25,8 @@
     "code:gen": "tsx --env-file-if-exists=.env.local scripts/gen-access-code.ts"
   },
   "dependencies": {
+    "@capacitor/core": "^8.4.1",
+    "@capgo/capacitor-native-audio": "^8.4.14",
     "@libsql/client": "^0.17.3",
     "better-auth": "^1.6.20",
     "cheerio": "^1.2.0",
@@ -42,6 +46,8 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/ios": "^8.4.1",
     "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^22",
