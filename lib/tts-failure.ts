@@ -32,7 +32,7 @@ export function describeFailure(err: unknown, timedOut: boolean): FailureInfo {
   if (err instanceof Error) {
     // ensureLoaded 對 !res.ok 丟 `合成失敗(<status>)`,從中取出 HTTP 狀態碼。
     const status = Number(/合成失敗\((\d+)\)/.exec(err.message)?.[1]);
-    if (status === 404) return { user: "找不到這個章節。", log: "http 404" };
+    if (status === 404) return { user: "貓翻遍了也沒這章。", log: "http 404" };
     if (status >= 500) {
       return { user: "聽書服務忙線中,請稍後再試。", log: `http ${status}` };
     }

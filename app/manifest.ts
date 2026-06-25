@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Koma — 零廣告小說閱讀器",
     short_name: "Koma",
-    description: "乾淨、零廣告、一隻陪你夜讀的貓。中文小說閱讀器。",
+    description: "乾淨、零廣告、陪伴你閱讀的貓。中文小說閱讀器。",
     start_url: "/",
     display: "standalone",
     background_color: "#151A19",

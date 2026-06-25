@@ -13,7 +13,7 @@ export default function Loading() {
       aria-busy="true"
     >
       <KomaCat size={104} drawing label="載入中" className="text-brand" />
-      <span className="text-sm text-muted-foreground">貓正在現身…</span>
+      <span className="text-sm text-muted-foreground">貓伸了個懶腰…</span>
     </main>
   );
 }

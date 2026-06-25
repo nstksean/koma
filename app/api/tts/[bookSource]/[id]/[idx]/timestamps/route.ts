@@ -50,7 +50,7 @@ export async function GET(
     const isNotFound =
       error instanceof Error && error.message.includes("找不到");
     if (!isNotFound) console.error("[tts] timestamps route failed:", error);
-    return new Response(isNotFound ? "找不到章節" : "聽書服務暫時無法使用", {
+    return new Response(isNotFound ? "貓翻遍了也沒這章" : "念書的貓走神了,待會再試", {
       status: isNotFound ? 404 : 500,
     });
   }
