@@ -18,7 +18,7 @@ describe("describeFailure", () => {
   it("HTTP 404 → 找不到章節", () => {
     const r = describeFailure(new Error("合成失敗(404)"), false);
     expect(r.log).toBe("http 404");
-    expect(r.user).toContain("找不到");
+    expect(r.user).toContain("沒這章");
   });
 
   it("HTTP 5xx → 服務忙線", () => {
