@@ -36,6 +36,7 @@ yarn-error.log*
 /test-results
 /playwright-report
 /.playwright
+/.playwright-mcp
 .gstack/
 
 # python forced-alignment POC venv (scripts/forced-align-poc.py)
