@@ -44,6 +44,9 @@ const fontVars = [
 export const metadata: Metadata = {
   title: "Koma — 零廣告小說閱讀器",
   description: "乾淨、零廣告、一隻陪你夜讀的貓。中文小說閱讀器。",
+  manifest: "/manifest.webmanifest",
+  // iOS 加到主畫面:用標準 standalone,標題顯示「Koma」而非整串 title
+  appleWebApp: { capable: true, title: "Koma", statusBarStyle: "black-translucent" },
 };
 
 const THEMES = ["cat-eye-dusk", "ember-night", "clean-paper"];
