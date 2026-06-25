@@ -4,6 +4,7 @@ import { Readable } from "node:stream";
 
 import { getChapterAudioMeta } from "@/lib/tts";
 import { getServerAuth } from "@/lib/auth-server";
+import { canListen } from "@/lib/auth";
 import { QuotaError } from "@/lib/tts-quota";
 import { checkTtsRate } from "@/lib/tts-rate-limit";
 import { parseTtsParams } from "./parse-params";
@@ -82,6 +83,10 @@ export async function GET(
   // ponytail: 每次 Range 請求多一次 session DB lookup;若音訊熱路徑出現延遲,
   //           開 better-auth session.cookieCache 即可免去多數 DB 查詢。
   const auth = await getServerAuth();
+  // 聽書硬閘:guest 不可合成(省成本/防繞過 client)。在動用額度與 Azure 前先擋。
+  if (!canListen(auth.role)) {
+    return new Response("聽書為會員功能", { status: 403 });
+  }
 
   try {
     const file = await getChapterAudioMeta(bookSource, slug, idxNum, auth, voice);

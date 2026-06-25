@@ -34,7 +34,6 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { useMounted } from "@/lib/use-mounted";
-import { canAutoPrefetch } from "@/lib/role-hint";
 import { parsePosMs, parseRateIdx } from "@/lib/audio-prefs";
 import { useTtsHighlight } from "./use-tts-highlight";
 
@@ -163,9 +162,6 @@ export function AudioPlayer({
   const seekRef = useRef<(charIndex: number) => void>(() => {});
   // 在飛的 timestamps fetch:換章/卸載時 abort,避免 resolve 進已卸載元件。
   const abortRef = useRef<AbortController | null>(null);
-  // 預合成(prefetch)進行中時使用者按了播放:記下意圖,合成就緒即自動續播
-  // (否則按播放會被 status==="loading" 守門吞掉,使用者得再按一次)。
-  const pendingPlayRef = useRef(false);
 
   // 逐章播放位置的本機 key(props 對單一實例固定;換章由 key={chapterId} 重掛)。
   const posKey = posStorageKey(bookSource, sourceBookId, idx);
@@ -468,24 +464,9 @@ export function AudioPlayer({
     [ensureLoaded, start, refresh, onPlayingChange],
   );
 
-  // 開章自動預先合成(prefetch),不自動播放:瀏覽器 autoplay policy 會擋無互動的
-  // play(),故僅預跑 server 惰性合成 + 設 audio.src,狀態轉 ready,使用者按播放即秒回。
-  // 換章時 reader-view 以 key={chapterId} 重掛本元件 → mounted false→true 再跑一次。
-  // ensureLoaded 冪等(loadedRef 守門),身分變動誤觸亦無害,故僅依 mounted。
-  // 只有「無限額度」(admin)才自動 prefetch;有限額度者(member/guest)按播放才合成,
-  // 避免「光是翻開章節」就被 prefetch 扣掉每日額度(canAutoPrefetch 讀非權威角色提示)。
-  useEffect(() => {
-    if (!mounted) return;
-    if (!canAutoPrefetch()) return;
-    void ensureLoaded().then((ok) => {
-      // 合成期間使用者按了播放(handlePlayPause 在 loading 時記下意圖)→ 就緒即續播。
-      if (ok && pendingPlayRef.current) {
-        pendingPlayRef.current = false;
-        void playLoaded();
-      }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted]);
+  // 不做開章自動合成:聽書為顯式功能,合成一律由使用者按播放觸發(loadAndPlay)。
+  // 「聽書模式」由 reader-view 的開關決定是否掛載本元件;掛載後維持 idle,不預取 TTS,
+  // 避免「光是翻開章節」就燒 Azure 合成成本(本元件出現 ≠ 立即合成)。
 
   // 章末自動續播交棒:上一章 onEnded 設了旗標 → 新章掛載即接著播(消費後即清旗標)。
   useEffect(() => {
@@ -511,11 +492,8 @@ export function AudioPlayer({
   const handlePlayPause = useCallback(async () => {
     const audio = audioRef.current;
     if (!audio) return;
-    // 合成中(多為 admin 開章 prefetch):記下播放意圖,就緒後自動續播,不再吞掉這一點。
-    if (status === "loading") {
-      pendingPlayRef.current = true;
-      return;
-    }
+    // 合成中(已有一次 loadAndPlay 在進行):忽略重複點擊,就緒後它會自動播。
+    if (status === "loading") return;
 
     if (status === "playing") {
       pausePlayback(); // 暫停 + 存位置

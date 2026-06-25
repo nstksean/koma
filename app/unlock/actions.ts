@@ -11,7 +11,6 @@ import {
   SESSION_COOKIE,
   SESSION_MAX_AGE,
 } from "@/lib/auth";
-import { ROLE_HINT_COOKIE } from "@/lib/role-hint";
 import { unlockThrottled } from "@/lib/unlock-rate-limit";
 
 export interface UnlockState {
@@ -44,20 +43,11 @@ export async function redeemCodeAction(
     path: "/",
     maxAge: SESSION_MAX_AGE,
   });
-  // 非權威角色提示(非 httpOnly):前端據此決定要不要自動 prefetch。
-  store.set(ROLE_HINT_COOKIE, role, {
-    httpOnly: false,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_MAX_AGE,
-  });
   redirect("/");
 }
 
-/** 登出（清舊 HMAC session + 角色提示 cookie）。導頁由呼叫端負責(見 LogoutButton 雙系統登出)。 */
+/** 登出（清舊 HMAC session cookie）。導頁由呼叫端負責(見 LogoutButton 雙系統登出)。 */
 export async function signOutAction(): Promise<void> {
   const store = await cookies();
   store.delete(SESSION_COOKIE);
-  store.delete(ROLE_HINT_COOKIE);
 }

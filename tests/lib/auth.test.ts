@@ -21,10 +21,21 @@ import {
   adminEmails,
   roleForEmail,
   userAuth,
+  canListen,
   SESSION_COOKIE,
 } from "@/lib/auth";
 import { accessCodes } from "@/db/schema";
 import { createTestDb, setActiveDb, type TestDb } from "@/tests/helpers/test-db";
+
+describe("canListen 聽書權限", () => {
+  it("admin / member 可聽書", () => {
+    expect(canListen("admin")).toBe(true);
+    expect(canListen("member")).toBe(true);
+  });
+  it("guest 不可聽書", () => {
+    expect(canListen("guest")).toBe(false);
+  });
+});
 
 describe("session 簽章", () => {
   it("signSession → verifySession 來回成立", () => {

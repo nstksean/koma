@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { getChapterView } from "@/lib/books";
 import { getProgress } from "@/lib/progress";
+import { getServerAuth } from "@/lib/auth-server";
+import { canListen } from "@/lib/auth";
 import { ReaderView } from "@/components/reader/reader-view";
 
 export default async function ReadPage({
@@ -20,6 +22,9 @@ export default async function ReadPage({
   const initialScrollRatio =
     prog && prog.chapterId === view.chapter.id ? prog.scrollRatio : 0;
 
+  // 聽書權限:admin / member 才給聽書開關,guest 顯示鎖頭導向 /unlock(server 為權威來源)。
+  const { role } = await getServerAuth();
+
   return (
     <ReaderView
       source={source}
@@ -35,6 +40,7 @@ export default async function ReadPage({
       position={view.position}
       totalChapters={view.totalChapters}
       initialScrollRatio={initialScrollRatio}
+      canListen={canListen(role)}
     />
   );
 }

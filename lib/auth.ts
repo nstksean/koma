@@ -28,6 +28,14 @@ export interface Auth {
   readonly identity: string;
 }
 
+/**
+ * 誰能用「聽書」(TTS)—— 省成本的單一真實來源。admin / member 可,純訪客 guest 不可。
+ * server route 在合成前用它擋 guest(回 403,連額度都不碰);閱讀頁也用它決定 UI。
+ */
+export function canListen(role: Role): boolean {
+  return role !== "guest";
+}
+
 export interface SessionPayload {
   readonly role: "admin" | "member"; // guest 不簽 cookie
   readonly id: string;

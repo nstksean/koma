@@ -6,6 +6,8 @@ import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
+  Headphones,
+  Lock,
   Minus,
   Plus,
   Settings2,
@@ -35,6 +37,8 @@ interface ReaderViewProps {
   position: number;
   totalChapters: number;
   initialScrollRatio: number;
+  /** 是否允許聽書(admin/member)。false(guest)→ 聽書入口顯示為鎖頭,導向 /unlock。 */
+  canListen: boolean;
 }
 
 type FontFamily = "serif" | "sans";
@@ -46,6 +50,7 @@ interface ReaderSettings {
 }
 
 const SETTINGS_KEY = "koma:reader";
+const LISTEN_KEY = "koma:listen"; // 全域聽書開關(持續模式,跨章保留)
 const DEFAULT_SETTINGS: ReaderSettings = {
   fontSize: 1.25, // DESIGN 預設 20px(中)
   lineHeight: 1.95, // DESIGN 行距 1.95
@@ -72,6 +77,15 @@ function round(n: number): number {
   return Math.round(n * 1000) / 1000;
 }
 
+function loadListen(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(LISTEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function ReaderView({
   source,
   sourceBookId,
@@ -86,6 +100,7 @@ export function ReaderView({
   position,
   totalChapters,
   initialScrollRatio,
+  canListen,
 }: ReaderViewProps) {
   const router = useRouter();
   const mounted = useMounted();
@@ -93,6 +108,8 @@ export function ReaderView({
   // 內文的樣式改用 `view`(下方)以 mounted 守門,避免 hydration 不一致。
   const [settings, setSettings] = useState<ReaderSettings>(loadSettings);
   const [showSettings, setShowSettings] = useState(false);
+  // 聽書模式(全域開關,持續模式跨章保留)。僅 canListen 者可開;掛載前恆 false 與 SSR 一致。
+  const [listenOn, setListenOn] = useState(loadListen);
   const [scrollPct, setScrollPct] = useState(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rafPending = useRef(false);
@@ -137,6 +154,18 @@ export function ReaderView({
       /* 忽略寫入失敗 */
     }
   }, [settings]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(LISTEN_KEY, listenOn ? "1" : "0");
+    } catch {
+      /* 忽略寫入失敗 */
+    }
+  }, [listenOn]);
+
+  // 只有 canListen 且開關開啟才掛載播放器(掛載 ≠ 立即合成,仍需按播放)。
+  // 掛載前(SSR/首次 hydration)恆不顯示,避免 hydration 不一致。
+  const showPlayer = mounted && canListen && listenOn;
 
   // 還原上次捲動位置。
   useEffect(() => {
@@ -224,6 +253,28 @@ export function ReaderView({
           </span>
         </span>
         <ChapterDrawer source={source} sourceBookId={sourceBookId} currentIdx={idx} />
+        {canListen ? (
+          <Button
+            variant={listenOn ? "secondary" : "ghost"}
+            size="icon"
+            aria-label={listenOn ? "關閉聽書" : "開啟聽書"}
+            aria-pressed={listenOn}
+            onClick={() => setListenOn((v) => !v)}
+            className={cn(listenOn && "text-brand")}
+          >
+            <Headphones />
+          </Button>
+        ) : (
+          // guest:鎖頭耳機,導向 /unlock 說明如何解鎖(server 端才是權威閘)。
+          <Link
+            href="/unlock"
+            aria-label="聽書需解鎖"
+            className="relative inline-flex size-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            <Headphones className="size-4" />
+            <Lock aria-hidden className="absolute bottom-1 right-1 size-3 rounded-full bg-background" />
+          </Link>
+        )}
         <Button
           variant={showSettings ? "secondary" : "ghost"}
           size="icon"
@@ -324,20 +375,26 @@ export function ReaderView({
         )}
       </nav>
 
-      {/* 固定播放器列預留空間,避免遮住章末貓 / 上下章。 */}
-      <div aria-hidden className="h-[calc(80px+env(safe-area-inset-bottom))]" />
+      {/* 聽書模式才掛播放器:關閉時完全不渲染 = 零監聽零成本,且不預留底部空間。
+          掛載 ≠ 立即合成,使用者按播放才打 TTS(持續模式 + 每章手動播)。 */}
+      {showPlayer && (
+        <>
+          {/* 固定播放器列預留空間,避免遮住章末貓 / 上下章。 */}
+          <div aria-hidden className="h-[calc(80px+env(safe-area-inset-bottom))]" />
 
-      {/* TTS 聽書播放器(portal 到 body)。key=chapterId → 換章自動重置。 */}
-      <AudioPlayer
-        key={chapterId}
-        bookSource={source}
-        sourceBookId={sourceBookId}
-        idx={idx}
-        nextIdx={nextIdx}
-        containerRef={contentRef}
-        onPlayingChange={handleTtsPlayingChange}
-        onRequestNext={goNext}
-      />
+          {/* TTS 聽書播放器(portal 到 body)。key=chapterId → 換章自動重置。 */}
+          <AudioPlayer
+            key={chapterId}
+            bookSource={source}
+            sourceBookId={sourceBookId}
+            idx={idx}
+            nextIdx={nextIdx}
+            containerRef={contentRef}
+            onPlayingChange={handleTtsPlayingChange}
+            onRequestNext={goNext}
+          />
+        </>
+      )}
     </div>
   );
 }

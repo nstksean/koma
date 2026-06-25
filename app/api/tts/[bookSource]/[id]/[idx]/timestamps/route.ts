@@ -1,5 +1,6 @@
 import { getChapterAudioMeta } from "@/lib/tts";
 import { getServerAuth } from "@/lib/auth-server";
+import { canListen } from "@/lib/auth";
 import { QuotaError } from "@/lib/tts-quota";
 import { checkTtsRate } from "@/lib/tts-rate-limit";
 import type { TimestampsPayload } from "@/src/tts";
@@ -26,6 +27,10 @@ export async function GET(
   const { bookSource, slug, idxNum, voice } = parsed.params;
   // 統一身分入口(與 audio route 一致),讓 email 登入者額度計在 user:<id> 桶。
   const auth = await getServerAuth();
+  // 聽書硬閘:guest 不可合成(timestamps 首呼會觸發合成,故同 audio route 在此先擋)。
+  if (!canListen(auth.role)) {
+    return new Response("聽書為會員功能", { status: 403 });
+  }
 
   try {
     const file = await getChapterAudioMeta(bookSource, slug, idxNum, auth, voice);

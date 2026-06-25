@@ -34,9 +34,9 @@ export default async function UnlockPage() {
         <ThemeToggle />
       </header>
 
-      <h1 className="mb-1 text-2xl font-semibold tracking-tight">解鎖聽書額度</h1>
+      <h1 className="mb-1 text-2xl font-semibold tracking-tight">解鎖聽書</h1>
       <p className="mb-6 text-sm text-muted-foreground">
-        貼上邀請碼即可提高每日聽書(語音合成)額度。沒有碼也能用訪客額度試聽。
+        聽書(語音合成朗讀)為會員功能。用 email 登入或貼上邀請碼即可解鎖,並獲得每日聽書額度。
       </p>
 
       <section className="mb-6 rounded-lg border border-border bg-card p-4">
@@ -45,9 +45,11 @@ export default async function UnlockPage() {
           {ROLE_LABEL[auth.role] ?? auth.role}
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
-          {unlimited
-            ? "今日聽書:無限"
-            : `今日聽書:剩 ${quota.remaining} / ${quota.limit} 章`}
+          {auth.role === "guest"
+            ? "聽書尚未解鎖,登入或貼碼即可開啟"
+            : unlimited
+              ? "今日聽書:無限"
+              : `今日聽書:剩 ${quota.remaining} / ${quota.limit} 章`}
         </p>
       </section>
 
