@@ -9,7 +9,9 @@ import { books } from "./books";
 import { chapters } from "./chapters";
 
 /**
- * progress：閱讀進度。每位使用者每本書一筆（記到哪一章、章內捲動比例）。
+ * progress：閱讀進度。每位擁有者每本書一筆（記到哪一章、章內捲動比例）。
+ * user_id = dataOwner key（登入者 `user:<id>`、guest `guest:<cookie>`);
+ * 欄位 default "local" 是早期單機殘留,runtime 走 getServerDataOwner(),不會用到 default。
  */
 export const progress = sqliteTable(
   "progress",

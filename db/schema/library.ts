@@ -7,7 +7,9 @@ import {
 import { books } from "./books";
 
 /**
- * library：書架。MVP 單機，userId 先固定 'local'（schema 已預留多使用者）。
+ * library：書架。每位擁有者一桶,user_id 存 dataOwner key
+ * (登入者 `user:<id>`、guest `guest:<cookie>`)。欄位 default "local" 是早期單機殘留,
+ * runtime 一律由 getServerDataOwner() 帶真實 key,實際不會落到 default。
  */
 export const library = sqliteTable(
   "library",
