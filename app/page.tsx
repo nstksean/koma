@@ -7,6 +7,7 @@ import { getServerAuth } from "@/lib/auth-server";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { KomaCat } from "@/components/brand/koma-cat";
 import { buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 const ROLE_LABEL: Record<string, string> = { admin: "管理員", member: "會員", guest: "訪客" };
@@ -42,7 +43,7 @@ export default async function HomePage({
   ]);
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-8">
+    <main className="mx-auto max-w-2xl px-4 pb-8 pt-safe-8">
       <header className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="flex items-center gap-2 font-display text-3xl font-semibold tracking-tight">
@@ -90,11 +91,11 @@ export default async function HomePage({
       )}
 
       <form action={searchAction} className="mb-8 flex gap-2">
-        <input
+        <Input
           name="q"
           type="search"
           placeholder="搜尋書名或作者…"
-          className="h-11 flex-1 rounded-md border border-input bg-transparent px-4 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-11 flex-1 px-4 text-base"
         />
         <button type="submit" className={buttonVariants({ variant: "default", size: "lg" })}>
           <Search /> 搜尋

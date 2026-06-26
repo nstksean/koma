@@ -49,7 +49,7 @@ export default async function BookPage({
       : null;
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-6">
+    <main className="mx-auto max-w-2xl px-4 pb-6 pt-safe-6">
       <header className="mb-4 flex items-center justify-between">
         <Link href="/" className={buttonVariants({ variant: "ghost", size: "icon" })} aria-label="回首頁">
           <ArrowLeft />
@@ -119,7 +119,7 @@ export default async function BookPage({
 /** 來源站暫時性故障的友善錯誤頁:不洩漏來源站名稱,提供「重新整理」重試。 */
 function BookFetchError() {
   return (
-    <main className="mx-auto max-w-2xl px-4 py-6">
+    <main className="mx-auto max-w-2xl px-4 pb-6 pt-safe-6">
       <header className="mb-4 flex items-center justify-between">
         <Link href="/" className={buttonVariants({ variant: "ghost", size: "icon" })} aria-label="回首頁">
           <ArrowLeft />

@@ -5,6 +5,7 @@ import { type SearchResult } from "@/src/sources";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { KomaCat } from "@/components/brand/koma-cat";
 import { buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export default async function SearchPage({
   searchParams,
@@ -25,18 +26,18 @@ export default async function SearchPage({
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-6">
+    <main className="mx-auto max-w-2xl px-4 pb-6 pt-safe-6">
       <header className="mb-6 flex items-center gap-2">
         <Link href="/" className={buttonVariants({ variant: "ghost", size: "icon" })} aria-label="回首頁">
           <ArrowLeft />
         </Link>
         <form action="/search" className="flex flex-1 gap-2">
-          <input
+          <Input
             name="q"
             type="search"
             defaultValue={keyword}
             placeholder="搜尋書名或作者…"
-            className="h-10 flex-1 rounded-md border border-input bg-transparent px-3 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="h-11 flex-1"
           />
           <button type="submit" className={buttonVariants({ variant: "default" })}>
             搜尋

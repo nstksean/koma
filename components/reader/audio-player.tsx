@@ -118,7 +118,6 @@ interface AudioPlayerProps {
   sourceBookId: string; // = slug
   bookTitle: string; // 鎖屏 MediaSession 的 artist 行
   chapterTitle: string; // 鎖屏 MediaSession 的標題
-  bookCover: string | null; // 鎖屏 MediaSession 封面(null = 無封面)
   idx: number; // 章序;換章時 reader-view 用 key={chapterId} 重掛本元件
   prevIdx: number | null; // 上一章序位(null = 第一章,鎖屏不顯示上一首)
   nextIdx: number | null; // 下一章序位(null = 最後一章,無法自動續播)
@@ -158,7 +157,6 @@ export function AudioPlayer({
   sourceBookId,
   bookTitle,
   chapterTitle,
-  bookCover,
   idx,
   prevIdx,
   nextIdx,
@@ -655,7 +653,6 @@ export function AudioPlayer({
   useMediaSession({
     title: chapterTitle,
     artist: bookTitle,
-    cover: bookCover,
     playing: isPlaying,
     durationMs,
     positionMs,

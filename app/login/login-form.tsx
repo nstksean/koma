@@ -7,12 +7,10 @@ import { Mail, KeyRound, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { authClient } from "@/lib/auth-client";
 import { validateLoginInput } from "@/lib/login-validation";
 import { claimGuestData } from "./actions";
-
-const INPUT_CLASS =
-  "h-10 rounded-md border border-input bg-transparent px-3 outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 /**
  * better-auth 回傳的英文錯誤碼 → 溫暖的繁中文案。對應的 code 來自
@@ -116,7 +114,7 @@ export function LoginForm({ from = "/" }: LoginFormProps) {
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
-      <input
+      <Input
         type="email"
         inputMode="email"
         autoComplete="email"
@@ -125,10 +123,9 @@ export function LoginForm({ from = "/" }: LoginFormProps) {
         placeholder="you@example.com"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        className={INPUT_CLASS}
       />
       <div className="relative">
-        <input
+        <Input
           type={showPassword ? "text" : "password"}
           autoComplete={mode === "signup" ? "new-password" : "current-password"}
           required
@@ -136,7 +133,7 @@ export function LoginForm({ from = "/" }: LoginFormProps) {
           placeholder="密碼(至少 8 碼)"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className={`${INPUT_CLASS} w-full pr-12`}
+          className="w-full pr-12"
         />
         <button
           type="button"

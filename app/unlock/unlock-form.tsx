@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { redeemCodeAction, type UnlockState } from "./actions";
 
 const initialState: UnlockState = {};
@@ -15,13 +16,7 @@ export function UnlockForm() {
 
   return (
     <form action={formAction} className="flex flex-col gap-3">
-      <input
-        name="code"
-        required
-        autoComplete="off"
-        placeholder="貼上邀請碼"
-        className="h-10 rounded-md border border-input bg-transparent px-3 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      />
+      <Input name="code" required autoComplete="off" placeholder="貼上邀請碼" />
       {state.error && (
         <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
           {state.error}

@@ -4,6 +4,7 @@ import { useActionState, useRef, useState } from "react";
 import { Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { importBookAction, type ImportState } from "@/app/actions";
 
 const initialState: ImportState = {};
@@ -33,17 +34,8 @@ export function ImportForm() {
   return (
     <form action={formAction} className="flex flex-col gap-4">
       <div className="grid gap-2 sm:grid-cols-2">
-        <input
-          name="title"
-          required
-          placeholder="書名（必填）"
-          className="h-10 rounded-md border border-input bg-transparent px-3 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        />
-        <input
-          name="author"
-          placeholder="作者（選填）"
-          className="h-10 rounded-md border border-input bg-transparent px-3 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        />
+        <Input name="title" required placeholder="書名（必填）" />
+        <Input name="author" placeholder="作者（選填）" />
       </div>
 
       <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-muted-foreground hover:text-foreground">

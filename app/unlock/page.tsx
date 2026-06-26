@@ -46,7 +46,7 @@ export default async function UnlockPage({
   const from = safeFrom(params.from);
 
   return (
-    <main className="mx-auto max-w-md px-4 py-6">
+    <main className="mx-auto max-w-md px-4 pb-6 pt-safe-6">
       <header className="mb-6 flex items-center justify-between">
         <Link
           href={from}

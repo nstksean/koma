@@ -9,12 +9,12 @@ const ROW_COUNT = 6;
 
 export default function SearchLoading() {
   return (
-    <main className="mx-auto max-w-2xl px-4 py-6" aria-busy="true">
+    <main className="mx-auto max-w-2xl px-4 pb-6 pt-safe-6" aria-busy="true">
       {/* header：返回鍵 + 搜尋框 + 主題切換 */}
       <div className="mb-6 flex items-center gap-2">
-        <div className="size-10 shrink-0 animate-pulse motion-reduce:animate-none rounded-md bg-muted" />
-        <div className="h-10 flex-1 animate-pulse motion-reduce:animate-none rounded-md bg-muted" />
-        <div className="size-10 shrink-0 animate-pulse motion-reduce:animate-none rounded-md bg-muted" />
+        <div className="size-11 shrink-0 animate-pulse motion-reduce:animate-none rounded-md bg-muted" />
+        <div className="h-11 flex-1 animate-pulse motion-reduce:animate-none rounded-md bg-muted" />
+        <div className="size-11 shrink-0 animate-pulse motion-reduce:animate-none rounded-md bg-muted" />
       </div>
 
       {/* 結果筆數列 */}

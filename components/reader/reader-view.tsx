@@ -30,7 +30,6 @@ interface ReaderViewProps {
   sourceBookId: string;
   bookId: string;
   bookTitle: string;
-  bookCover: string | null;
   chapterId: string;
   chapterTitle: string;
   content: string;
@@ -97,7 +96,6 @@ export function ReaderView({
   sourceBookId,
   bookId,
   bookTitle,
-  bookCover,
   chapterId,
   chapterTitle,
   content,
@@ -204,12 +202,9 @@ export function ReaderView({
     let cancelled = false;
     void document.fonts.ready.then(() => {
       if (cancelled) return;
-      // 仍留 rAF:確保字體就緒後的這一幀 layout 已 flush 再讀 scrollHeight。
-      requestAnimationFrame(() => {
-        if (cancelled) return;
-        const max = document.documentElement.scrollHeight - window.innerHeight;
-        window.scrollTo({ top: max * initialScrollRatio });
-      });
+      // fonts.ready 已 resolve 在字體 reflow 之後,可直接讀 scrollHeight 捲過去。
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      window.scrollTo({ top: max * initialScrollRatio });
     });
     return () => {
       cancelled = true;
@@ -502,7 +497,6 @@ export function ReaderView({
             sourceBookId={sourceBookId}
             bookTitle={bookTitle}
             chapterTitle={chapterTitle}
-            bookCover={bookCover}
             idx={idx}
             prevIdx={prevIdx}
             nextIdx={nextIdx}
