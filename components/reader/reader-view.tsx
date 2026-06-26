@@ -17,6 +17,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ChapterDrawer } from "@/components/reader/chapter-drawer";
 import { ReaderContent } from "@/components/reader/reader-content";
+import { PageTurnOverlay } from "@/components/reader/page-turn-overlay";
 import { AudioPlayer } from "@/components/reader/audio-player";
 import { KomaCat } from "@/components/brand/koma-cat";
 import { saveProgressAction } from "@/app/actions";
@@ -42,11 +43,13 @@ interface ReaderViewProps {
 }
 
 type FontFamily = "serif" | "sans";
+type PageMode = "scroll" | "paged";
 
 interface ReaderSettings {
   fontSize: number; // rem
   lineHeight: number;
   fontFamily: FontFamily;
+  pageMode: PageMode; // scroll = 連續捲動;paged = 一頁一章(熱區/手勢切章)
 }
 
 const SETTINGS_KEY = "koma:reader";
@@ -55,6 +58,7 @@ const DEFAULT_SETTINGS: ReaderSettings = {
   fontSize: 1.25, // DESIGN 預設 20px(中)
   lineHeight: 1.95, // DESIGN 行距 1.95
   fontFamily: "sans", // DESIGN:黑體為主,明體為可選非預設
+  pageMode: "scroll", // 維持現況;舊使用者經 loadSettings merge 自動拿到
 };
 const FONT_MIN = 0.875;
 const FONT_MAX = 1.75;
@@ -142,6 +146,12 @@ export function ReaderView({
     router.push(chapterHref(nextIdx));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, source, sourceBookId, nextIdx]);
+
+  const goPrev = useCallback(() => {
+    if (prevIdx === null) return;
+    router.push(chapterHref(prevIdx));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, source, sourceBookId, prevIdx]);
 
   // 內文實際套用的設定:掛載前(SSR + 首次 hydration)恆用 DEFAULT,與伺服器
   // 輸出一致;掛載後才換成使用者的 localStorage 設定。
@@ -331,6 +341,25 @@ export function ReaderView({
                 </Button>
               </div>
             </div>
+            <div className="flex items-center justify-between py-1.5">
+              <span className="text-muted-foreground">翻頁</span>
+              <div className="flex gap-2">
+                <Button
+                  variant={settings.pageMode === "scroll" ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => setSettings((s) => ({ ...s, pageMode: "scroll" }))}
+                >
+                  捲動
+                </Button>
+                <Button
+                  variant={settings.pageMode === "paged" ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => setSettings((s) => ({ ...s, pageMode: "paged" }))}
+                >
+                  分頁
+                </Button>
+              </div>
+            </div>
           </div>
         )}
       </header>
@@ -351,6 +380,16 @@ export function ReaderView({
         <h1 className="mb-6 text-xl font-semibold">{chapterTitle}</h1>
         <ReaderContent content={content} containerRef={contentRef} />
       </article>
+
+      {/* 分頁模式:左右熱區 + 水平手勢切章。用 view.pageMode 守 hydration。 */}
+      {mounted && view.pageMode === "paged" && (
+        <PageTurnOverlay
+          onPrev={goPrev}
+          onNext={goNext}
+          canPrev={prevIdx !== null}
+          canNext={nextIdx !== null}
+        />
+      )}
 
       {/* 章末:貓蜷起睡著(DESIGN Motion §104)。每章結尾的休止符,克制出現一次。 */}
       <div className="mx-auto flex max-w-2xl flex-col items-center gap-2 px-5 pt-2 pb-8 text-sm text-muted-foreground">

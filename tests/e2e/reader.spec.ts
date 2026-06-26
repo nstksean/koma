@@ -53,3 +53,21 @@ test("閱讀設定：可切換字級，閱讀進度被記住", async ({ page }) 
   const scrollY = await page.evaluate(() => window.scrollY);
   expect(scrollY).toBeGreaterThan(0);
 });
+
+test("分頁模式：點右側熱區到下一章、左側回上一章", async ({ page }) => {
+  await page.goto("/read/ttkan/doupocangqiong-tiancantudou/1");
+  await expect(page.locator("article p").first()).toBeVisible();
+
+  // 切到分頁模式
+  await page.getByRole("button", { name: "閱讀設定" }).click();
+  await page.getByRole("button", { name: "分頁" }).click();
+
+  // 點右側熱區 → 下一章(idx +1)。熱區是 button,章末導覽是 link,用 role 區隔。
+  await page.getByRole("button", { name: "下一章" }).click();
+  await expect(page).toHaveURL(/\/read\/ttkan\/[^/]+\/2$/);
+  await expect(page.locator("article p").first()).toBeVisible();
+
+  // 點左側熱區 → 回上一章(idx -1)。分頁模式已存 localStorage,換章後仍生效。
+  await page.getByRole("button", { name: "上一章" }).click();
+  await expect(page).toHaveURL(/\/read\/ttkan\/[^/]+\/1$/);
+});
