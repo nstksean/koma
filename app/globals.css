@@ -135,6 +135,10 @@
   }
   body {
     @apply bg-background text-foreground font-sans;
+    /* 來源站抓回的內文/書介/書名可能夾長串拉丁字(URL、英文詞),CJK 會自然斷行
+       但長拉丁串不會 → 撐爆版面、右側露白。break-word 只在整串會溢出時才斷,
+       不影響一般詞與 flex/grid 內距,屬安全全域預設。閱讀器逐字 span 也靠此斷行。 */
+    overflow-wrap: break-word;
   }
   /* 主題切換 ~400ms 漸變(DESIGN Motion);尊重減量動態偏好。 */
   @media (prefers-reduced-motion: no-preference) {
