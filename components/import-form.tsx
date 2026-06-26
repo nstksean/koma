@@ -2,6 +2,7 @@
 
 import { useActionState, useRef, useState } from "react";
 import { Upload } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { importBookAction, type ImportState } from "@/app/actions";
 
@@ -24,7 +25,8 @@ export function ImportForm() {
       const txt = await file.text();
       if (textRef.current) textRef.current.value = txt;
     } catch {
-      /* 讀檔失敗就交給 server 端用 file 物件處理 */
+      // 讀檔失敗:提示使用者,內容仍會交給 server 端用 file 物件處理。
+      toast.error("讀取檔案失敗，將改用上傳的檔案匯入");
     }
   }
 
@@ -49,6 +51,7 @@ export function ImportForm() {
         {fileName ? `已選：${fileName}` : "選擇 .txt 檔（或直接貼上）"}
         <input
           type="file"
+          name="file"
           accept=".txt,text/plain"
           className="hidden"
           onChange={onPickFile}

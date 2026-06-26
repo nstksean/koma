@@ -2,6 +2,7 @@
 
 import { BookmarkCheck, BookmarkPlus } from "lucide-react";
 import { useState, useTransition } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { addToLibraryAction, removeFromLibraryAction } from "@/app/actions";
 
@@ -23,6 +24,7 @@ export function LibraryButton({ bookId, initialInLibrary }: LibraryButtonProps) 
         else await removeFromLibraryAction(bookId);
       } catch {
         setInLibrary(!next); // 失敗回滾
+        toast.error("加入失敗，再試一次");
       }
     });
   }

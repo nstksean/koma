@@ -116,14 +116,16 @@
   --secondary: #f4ecdb;
   --secondary-foreground: #1b1813;
   --muted: #f4ecdb;
-  --muted-foreground: #8c8578;
+  /* WCAG AA:原 #8c8578 對紙底 3.45:1 不足,加深至 #6e6555 → 5.41:1(對 surface-2 4.89:1)。 */
+  --muted-foreground: #6e6555;
   --accent: #f4ecdb;
   --accent-foreground: #1b1813;
   --destructive: #b4472c;
   --border: #ece6d9;
   --input: #ece6d9;
-  --ring: #c2762b;
-  --brand: #c2762b;
+  /* WCAG AA:brand 作章名/進度等文字色,原 #c2762b 對紙底 3.34:1 不足,加深至 #9e5d1d → 4.90:1。 */
+  --ring: #9e5d1d;
+  --brand: #9e5d1d;
   --brand-2: #5e8b7e;
   /* 淨紙(light):淺底陰影更淡。 */
   --shadow-player: 0 -4px 16px rgba(0, 0, 0, 0.08);
@@ -151,7 +153,7 @@
 /* 閱讀器:字級 / 行距由 CSS 變數驅動(設定面板會改這兩個值)。 */
 .reader-content {
   font-size: var(--reader-font-size, 1.25rem);
-  line-height: var(--reader-line-height, 1.95);
+  line-height: var(--reader-line-height, 1.85);
 }
 
 /* TTS 聽書:當前朗讀字的卡拉OK高亮。底色/文字色用主題語意 token(三主題皆可讀:

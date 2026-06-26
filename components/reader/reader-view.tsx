@@ -56,7 +56,7 @@ const SETTINGS_KEY = "koma:reader";
 const LISTEN_KEY = "koma:listen"; // 全域聽書開關(持續模式,跨章保留)
 const DEFAULT_SETTINGS: ReaderSettings = {
   fontSize: 1.25, // DESIGN 預設 20px(中)
-  lineHeight: 1.95, // DESIGN 行距 1.95
+  lineHeight: 1.85, // DESIGN 行距 1.85
   fontFamily: "sans", // DESIGN:黑體為主,明體為可選非預設
   pageMode: "scroll", // 維持現況;舊使用者經 loadSettings merge 自動拿到
 };
@@ -251,7 +251,7 @@ export function ReaderView({
       </div>
 
       {/* 頂部工具列 */}
-      <header className="sticky top-0 z-10 flex items-center gap-1 border-b border-border bg-background/85 px-3 py-2 backdrop-blur">
+      <header className="sticky top-0 z-10 flex items-center gap-1 border-b border-border bg-background/85 px-3 py-2 pt-[env(safe-area-inset-top)] backdrop-blur">
         <Link
           href={`/book/${source}/${encodeURIComponent(sourceBookId)}`}
           className={buttonVariants({ variant: "ghost", size: "icon" })}

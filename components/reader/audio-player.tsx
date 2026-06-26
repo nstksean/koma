@@ -612,7 +612,7 @@ export function AudioPlayer({
       {/* 隱藏 <audio>:用 element ref 而非 new Audio(),便於事件掛載與 SSR 安全。 */}
       <audio ref={audioRef} preload="metadata" className="hidden" />
 
-      <div className="mx-auto flex max-w-3xl flex-col gap-2 border-t border-border bg-card px-4 py-3 shadow-[var(--shadow-player)]">
+      <div className="mx-auto flex max-w-3xl flex-col gap-2 border-t border-border bg-card px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-[var(--shadow-player)]">
         {/* 第一列:時間 + 進度條(獨佔整列,進度條不再跟控制鈕擠) */}
         <div className="flex items-center gap-3">
           <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
@@ -628,8 +628,15 @@ export function AudioPlayer({
             onChange={handleSeek}
             disabled={durationMs === 0}
             aria-label="播放進度"
+            // 已播段染 brand、未播段留 muted:appearance-none 下 accent-color 只上 thumb,
+            // 故用 linear-gradient 自畫填充軌(percent 由 position/duration 求)。
+            style={{
+              background: `linear-gradient(to right, var(--brand) ${
+                durationMs > 0 ? (Math.min(positionMs, durationMs) / durationMs) * 100 : 0
+              }%, var(--muted) 0)`,
+            }}
             className={cn(
-              "h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-brand",
+              "h-1.5 flex-1 cursor-pointer appearance-none rounded-full accent-brand",
               durationMs === 0 && "cursor-not-allowed opacity-50",
             )}
           />

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { ArrowDownAZ, ArrowUpAZ, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDownAZ, ArrowUpAZ, Crosshair, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ChapterRef {
@@ -31,6 +31,10 @@ export function ChapterList({
   const [query, setQuery] = useState("");
   const [asc, setAsc] = useState(true);
   const [winStart, setWinStart] = useState(0);
+  // 「跳到目前章」按下後待捲動到目前章那列(等切換到正確 window 後的下一次 render)。
+  // 用 ref 而非 state:它只是個一次性旗標,不需觸發 render。
+  const pendingJumpRef = useRef(false);
+  const currentRowRef = useRef<HTMLLIElement | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim();
@@ -49,6 +53,32 @@ export function ChapterList({
   const href = (idx: number) =>
     `/read/${source}/${encodeURIComponent(sourceBookId)}/${idx}`;
 
+  // 目前章在 filtered 中是否存在(可能被搜尋過濾掉)。
+  const hasCurrent =
+    currentIdx !== undefined &&
+    filtered.some((c) => c.idx === currentIdx);
+
+  // 切換到包含目前章的 window,標記待捲動。
+  function jumpToCurrent() {
+    if (currentIdx === undefined) return;
+    const pos = filtered.findIndex((c) => c.idx === currentIdx);
+    if (pos < 0) return;
+    const targetWin = windowed ? Math.floor(pos / CHUNK) * CHUNK : 0;
+    pendingJumpRef.current = true;
+    if (targetWin === start) flushJump();
+    else setWinStart(targetWin); // window 變更會重 render,由下方 effect 接手捲動
+  }
+
+  // 把目前章那列捲進可視範圍(已在正確 window 才有 ref)。
+  function flushJump() {
+    if (!pendingJumpRef.current) return;
+    pendingJumpRef.current = false;
+    currentRowRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+
+  // window 切到位後,把目前章那列捲進可視範圍。
+  useEffect(flushJump, [start]);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex gap-2 p-2">
@@ -61,6 +91,17 @@ export function ChapterList({
             className="h-9 w-full rounded-md border border-input bg-transparent pl-8 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
+        {hasCurrent && (
+          <button
+            type="button"
+            onClick={jumpToCurrent}
+            aria-label="跳到目前章"
+            title="跳到目前章"
+            className="inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-input text-primary transition-colors hover:bg-accent active:bg-accent"
+          >
+            <Crosshair className="size-4" />
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setAsc((a) => !a)}
@@ -105,7 +146,7 @@ export function ChapterList({
 
       <ul className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
         {shown.map((c) => (
-          <li key={c.idx}>
+          <li key={c.idx} ref={currentIdx === c.idx ? currentRowRef : undefined}>
             <Link
               href={href(c.idx)}
               onClick={onNavigate}

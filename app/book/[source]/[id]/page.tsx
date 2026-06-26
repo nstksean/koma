@@ -1,14 +1,27 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, BookOpen } from "lucide-react";
-import { getOrFetchBook } from "@/lib/books";
+import { ArrowLeft, BookOpen, CloudOff } from "lucide-react";
+import { getOrFetchBook, type BookWithChapters } from "@/lib/books";
 import { isInLibrary } from "@/lib/library";
 import { getProgress } from "@/lib/progress";
 import { LibraryButton } from "@/components/library-button";
 import { ChapterList } from "@/components/chapter-list";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { buttonVariants } from "@/components/ui/button";
+import { RetryButton } from "./retry-button";
+
+/**
+ * 判斷抓書失敗是否屬於「來源站確實沒有這本書」(→ 真 404),
+ * 而非暫時性的來源故障(網路 / 5xx / 解析失敗 → 可重試)。
+ * 來源 adapter 以 `fetch 失敗 <status> ...` 帶出 HTTP 狀態;
+ * 404/410 視為 not-found,其餘(含本地書缺漏)一律當暫時性錯誤可重試。
+ */
+function isNotFoundError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/找不到本地書/.test(msg)) return true; // 自帶書且 DB 無此筆 → 真的不存在
+  return /fetch 失敗 (404|410)\b/.test(msg);
+}
 
 export default async function BookPage({
   params,
@@ -18,8 +31,14 @@ export default async function BookPage({
   const { source, id } = await params;
   const sourceBookId = decodeURIComponent(id);
 
-  const data = await getOrFetchBook(source, sourceBookId).catch(() => null);
-  if (!data) notFound();
+  let data: BookWithChapters;
+  try {
+    data = await getOrFetchBook(source, sourceBookId);
+  } catch (err) {
+    if (isNotFoundError(err)) notFound();
+    // 來源站暫時性故障:不要當 404,給「重新整理」重試入口。
+    return <BookFetchError />;
+  }
   const { book, chapters } = data;
 
   const progress = await getProgress(book.id);
@@ -93,6 +112,29 @@ export default async function BookPage({
           />
         </div>
       </section>
+    </main>
+  );
+}
+
+/** 來源站暫時性故障的友善錯誤頁:不洩漏來源站名稱,提供「重新整理」重試。 */
+function BookFetchError() {
+  return (
+    <main className="mx-auto max-w-2xl px-4 py-6">
+      <header className="mb-4 flex items-center justify-between">
+        <Link href="/" className={buttonVariants({ variant: "ghost", size: "icon" })} aria-label="回首頁">
+          <ArrowLeft />
+        </Link>
+        <ThemeToggle />
+      </header>
+
+      <div className="rounded-lg border border-dashed border-border py-12 text-center text-muted-foreground">
+        <CloudOff className="mx-auto mb-3 size-10 text-muted-foreground/70" />
+        <p className="mb-1 font-medium text-foreground">暫時讀取不到這本書</p>
+        <p className="mb-5 text-sm">可能是連線不穩或來源暫時無回應，稍後再試一次。</p>
+        <div className="flex justify-center">
+          <RetryButton />
+        </div>
+      </div>
     </main>
   );
 }

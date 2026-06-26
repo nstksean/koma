@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, Noto_Sans_TC, Noto_Serif_TC, Source_Sans_3 } from "next/font/google";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -47,6 +47,13 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   // iOS 加到主畫面:用標準 standalone,標題顯示「Koma」而非整串 title
   appleWebApp: { capable: true, title: "Koma", statusBarStyle: "black-translucent" },
+};
+
+// viewportFit cover:讓 env(safe-area-inset-*) 在 iOS 瀏海 / Home Indicator 機種生效。
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 const THEMES = ["cat-eye-dusk", "ember-night", "clean-paper"];

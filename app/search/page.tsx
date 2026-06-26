@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, BookOpen } from "lucide-react";
 import { searchBooks } from "@/lib/search";
-import { DEFAULT_SOURCE, type SearchResult } from "@/src/sources";
+import { type SearchResult } from "@/src/sources";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { KomaCat } from "@/components/brand/koma-cat";
 import { buttonVariants } from "@/components/ui/button";
@@ -58,17 +58,30 @@ export default async function SearchPage({
       )}
 
       <ul className="divide-y divide-border">
-        {results.map((r) => (
-          <li key={`${r.source}:${r.sourceBookId}`}>
-            <Link
-              href={`/book/${r.source}/${encodeURIComponent(r.sourceBookId)}`}
-              className="flex items-center gap-3 py-3 transition-colors hover:bg-accent/50"
-            >
-              <BookOpen className="size-5 shrink-0 text-muted-foreground" />
-              <span className="font-medium">{r.title}</span>
-            </Link>
-          </li>
-        ))}
+        {results.map((r) => {
+          // 副標:作者/分類(來源有給才顯示);SearchResult 目前只帶 author。
+          const subtitle = [r.author, (r as { category?: string }).category]
+            .filter(Boolean)
+            .join(" · ");
+          return (
+            <li key={`${r.source}:${r.sourceBookId}`}>
+              <Link
+                href={`/book/${r.source}/${encodeURIComponent(r.sourceBookId)}`}
+                className="flex items-center gap-3 py-3 transition-colors hover:bg-accent/50"
+              >
+                <BookOpen className="size-5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{r.title}</span>
+                  {subtitle && (
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {subtitle}
+                    </span>
+                  )}
+                </span>
+              </Link>
+            </li>
+          );
+        })}
       </ul>
 
       {keyword && !error && results.length === 0 && (
@@ -81,7 +94,7 @@ export default async function SearchPage({
       {!keyword && (
         <div className="py-12 text-center text-muted-foreground">
           <KomaCat size={96} className="mx-auto mb-3 text-brand/70" />
-          <p>輸入關鍵字開始搜尋（來源：{DEFAULT_SOURCE}）。</p>
+          <p>輸入書名或作者開始搜尋。</p>
         </div>
       )}
     </main>
