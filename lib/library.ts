@@ -85,6 +85,19 @@ export async function listLibrary(): Promise<readonly LibraryItem[]> {
   }));
 }
 
+/**
+ * 把某擁有者的書架+進度接續給另一個擁有者(guest 登入後搬到 user:<id>)。
+ * 撞書(unique user_id+book_id)時保留 target 既有那筆:UPDATE OR IGNORE 跳過該筆,
+ * 再刪掉沒搬成的來源殘列。空來源 / from===to → no-op。冪等:可重跑(下次登入再試)。
+ */
+export async function reassignOwner(from: string, to: string): Promise<void> {
+  if (!from || !to || from === to) return;
+  await db.run(sql`UPDATE OR IGNORE library SET user_id = ${to} WHERE user_id = ${from}`);
+  await db.run(sql`DELETE FROM library WHERE user_id = ${from}`);
+  await db.run(sql`UPDATE OR IGNORE progress SET user_id = ${to} WHERE user_id = ${from}`);
+  await db.run(sql`DELETE FROM progress WHERE user_id = ${from}`);
+}
+
 /** 全域「繼續上次閱讀」：最近一次有進度的書 + 章節(含 第X/Y章 序位)。 */
 export async function getContinueReading(): Promise<ContinueReading | null> {
   const userId = await currentUserId();

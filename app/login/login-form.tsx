@@ -7,6 +7,7 @@ import { Mail, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth-client";
 import { validateLoginInput } from "@/lib/login-validation";
+import { claimGuestData } from "./actions";
 
 const INPUT_CLASS =
   "h-10 rounded-md border border-input bg-transparent px-3 outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -41,6 +42,13 @@ export function LoginForm() {
       if (error) {
         setError(error.message ?? (mode === "signup" ? "註冊失敗" : "Email 或密碼錯誤"));
         return;
+      }
+      // 接續訪客資料(書架+進度)到此帳號。失敗不擋登入——帳號已建立,
+      // reassignOwner 冪等,下次登入會再試。
+      try {
+        await claimGuestData();
+      } catch {
+        // intentionally ignored: 接續可重試,不應阻斷登入
       }
       router.push("/");
       router.refresh();
