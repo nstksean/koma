@@ -3,6 +3,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* iOS 瀏海/狀態列:black-translucent + viewportFit:cover 下,頂層捲動頁的 main
+   要把 safe-area-inset-top 疊加到 top padding。用法同原生 spacing:pt-safe-6 = pt-6 + inset。 */
+@utility pt-safe-* {
+  padding-top: calc(env(safe-area-inset-top) + var(--spacing) * --value(integer));
+}
+
 /*
  * 主題真理在 DESIGN.md。這裡把 DESIGN 的語意色票
  * (--bg / --surface / --ink / --accent…)映射到 shadcn 慣用的語意變數

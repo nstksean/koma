@@ -12,7 +12,7 @@
  * 進度與高亮一律以 `audio.currentTime`(media time)為準,不縮放 timestamp。
  */
 
-import { Check, Gauge, Loader2, Moon, Pause, Play, Repeat } from "lucide-react";
+import { AlarmClock, Check, Gauge, Loader2, Pause, Play, Repeat } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { useMounted } from "@/lib/use-mounted";
 import { parsePosMs, parseRateIdx } from "@/lib/audio-prefs";
 import { useTtsHighlight } from "./use-tts-highlight";
+import { useMediaSession } from "./use-media-session";
 
 /** 變速檔位(下限 1×、上限 2×,防變調由 preservesPitch 處理)。dropdown 直選,非循環。 */
 const PLAYBACK_RATES = [1, 1.25, 1.5, 1.75, 2] as const;
@@ -115,12 +116,17 @@ type PlayerStatus =
 interface AudioPlayerProps {
   bookSource: string;
   sourceBookId: string; // = slug
+  bookTitle: string; // 鎖屏 MediaSession 的 artist 行
+  chapterTitle: string; // 鎖屏 MediaSession 的標題
+  bookCover: string | null; // 鎖屏 MediaSession 封面(null = 無封面)
   idx: number; // 章序;換章時 reader-view 用 key={chapterId} 重掛本元件
+  prevIdx: number | null; // 上一章序位(null = 第一章,鎖屏不顯示上一首)
   nextIdx: number | null; // 下一章序位(null = 最後一章,無法自動續播)
   voice?: string;
   containerRef: React.RefObject<HTMLDivElement | null>; // reader-content 內文容器
   onPlayingChange?: (playing: boolean) => void; // 給 reader-view 做進度互斥
-  onRequestNext?: () => void; // 章末自動續播:請 reader-view 導到下一章
+  onRequestNext?: () => void; // 章末自動續播 / 鎖屏下一首:請 reader-view 導到下一章
+  onRequestPrev?: () => void; // 鎖屏上一首:請 reader-view 導到上一章
 }
 
 /**
@@ -150,12 +156,17 @@ function formatTime(ms: number): string {
 export function AudioPlayer({
   bookSource,
   sourceBookId,
+  bookTitle,
+  chapterTitle,
+  bookCover,
   idx,
+  prevIdx,
   nextIdx,
   voice = DEFAULT_VOICE,
   containerRef,
   onPlayingChange,
   onRequestNext,
+  onRequestPrev,
 }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   // 是否已抓過 timestamp + 設過 audio.src(後續 play/pause 不重抓)。
@@ -598,12 +609,67 @@ export function AudioPlayer({
     [refresh],
   );
 
+  /** 鎖屏進度條/快轉快退跳到指定毫秒(夾在 [0, duration],與 handleSeek 同 apply 模式)。 */
+  const mediaSeek = useCallback(
+    (ms: number) => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      const clamped = Math.max(0, Math.min(ms, durationMs || ms));
+      setPositionMs(clamped);
+      const apply = () => {
+        audio.currentTime = clamped / 1000;
+        refresh();
+      };
+      if (audio.readyState >= 1) apply();
+      else void whenSeekable(audio).then(apply);
+    },
+    [durationMs, refresh],
+  );
+
   const isLoading = status === "loading";
   const isPlaying = status === "playing";
   const isError = status === "error";
   const rateLabel = `${PLAYBACK_RATES[rateIdx]}×`;
   const sleepActive = sleepEndsAt !== null;
-  const nightActive = sleepActive || autoNext; // 任一夜讀選項開啟 → 月亮鈕染色
+  const nightActive = sleepActive || autoNext; // 任一夜讀選項開啟 → 鬧鐘鈕染色
+
+  // 鎖屏跳章(上一首/下一首):沿用章末「自動續播」的交棒旗標 —— 播放中跳章後,
+  // 新章掛載即接著播;暫停時則純跳章不自動播(維持暫停狀態,語義一致)。
+  const skipChapter = useCallback(
+    (go?: () => void) => {
+      if (!go) return;
+      if (status === "playing") {
+        try {
+          window.sessionStorage.setItem(AUTOPLAY_FLAG, "1");
+        } catch {
+          /* 忽略:擋下只是不自動播,新章點一下即可 */
+        }
+      }
+      go();
+    },
+    [status],
+  );
+
+  // 鎖屏「正在播放」(書名/章節名/封面 + 系統播放控制)。play 用 toggle:OS 的 play
+  // 只在暫停時送、pause 只在播放時送,語義恰好對得上 handlePlayPause。
+  useMediaSession({
+    title: chapterTitle,
+    artist: bookTitle,
+    cover: bookCover,
+    playing: isPlaying,
+    durationMs,
+    positionMs,
+    rate: PLAYBACK_RATES[rateIdx],
+    onPlay: () => {
+      if (status !== "playing") void handlePlayPause();
+    },
+    onPause: () => {
+      if (status === "playing") pausePlayback();
+    },
+    onSeek: mediaSeek,
+    onPrevTrack: prevIdx !== null ? () => skipChapter(onRequestPrev) : undefined,
+    onNextTrack: nextIdx !== null ? () => skipChapter(onRequestNext) : undefined,
+  });
 
   if (!mounted) return null;
 
@@ -724,7 +790,7 @@ export function AudioPlayer({
                   nightActive && "text-brand",
                 )}
               >
-                <Moon />
+                <AlarmClock />
                 {sleepActive && (
                   <span className="text-xs">{formatTime(sleepRemainingMs)}</span>
                 )}

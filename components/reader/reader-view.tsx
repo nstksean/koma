@@ -20,6 +20,7 @@ import { ReaderContent } from "@/components/reader/reader-content";
 import { PageTurnOverlay } from "@/components/reader/page-turn-overlay";
 import { AudioPlayer } from "@/components/reader/audio-player";
 import { KomaCat } from "@/components/brand/koma-cat";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { saveProgressAction } from "@/app/actions";
 import { cn } from "@/lib/utils";
 import { useMounted } from "@/lib/use-mounted";
@@ -29,6 +30,7 @@ interface ReaderViewProps {
   sourceBookId: string;
   bookId: string;
   bookTitle: string;
+  bookCover: string | null;
   chapterId: string;
   chapterTitle: string;
   content: string;
@@ -95,6 +97,7 @@ export function ReaderView({
   sourceBookId,
   bookId,
   bookTitle,
+  bookCover,
   chapterId,
   chapterTitle,
   content,
@@ -111,7 +114,9 @@ export function ReaderView({
   // 從 localStorage 惰性初始化(SSR 端 loadSettings 回 DEFAULT)。實際套用到
   // 內文的樣式改用 `view`(下方)以 mounted 守門,避免 hydration 不一致。
   const [settings, setSettings] = useState<ReaderSettings>(loadSettings);
-  const [showSettings, setShowSettings] = useState(false);
+  // 沉浸模式:點內文中央切換工具列隱藏(slide up + fade + 不可點)。
+  // 用 boolean state,初值 false(顯示)與 SSR 一致,不需 mounted 守門。
+  const [chromeHidden, setChromeHidden] = useState(false);
   // 聽書模式(全域開關,持續模式跨章保留)。僅 canListen 者可開;掛載前恆 false 與 SSR 一致。
   const [listenOn, setListenOn] = useState(loadListen);
   const [scrollPct, setScrollPct] = useState(0);
@@ -119,6 +124,9 @@ export function ReaderView({
   const rafPending = useRef(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const ttsPlayingRef = useRef(false);
+  // 鍵盤翻章短鎖:導航送出後上鎖,直到新章掛載(chapterId 變)才解鎖,
+  // 避免連按方向鍵在這一章還沒換掉前就再送一次,造成跳過章節。
+  const navLockRef = useRef(false);
 
   // 穩定 callback(身分恆定):只寫 ref,不需重建。傳 inline arrow 會每次 re-render
   // 換身分,連帶讓 audio-player 的事件綁定 effect 反覆重掛 —— 之前正是這個「不穩定」
@@ -139,6 +147,17 @@ export function ReaderView({
 
   const chapterHref = (n: number) =>
     `/read/${source}/${encodeURIComponent(sourceBookId)}/${n}`;
+
+  // 點內文中央切換工具列顯示(沉浸)。排除:點到連結/按鈕(讓它們正常作用)、
+  // 正在選字(避免選取結束的放開被當成點擊而誤觸)。scroll/paged 兩種模式皆適用——
+  // paged 的 PageTurnOverlay 左右各留 30vw 熱區、中間 40% 是空的,正好交給這裡切工具列。
+  const toggleChrome = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest("a, button")) return;
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) return;
+    setChromeHidden((v) => !v);
+  }, []);
 
   // 章末自動續播:導到下一章(autoplay 交棒旗標由 audio-player 設,新章掛載即接著播)。
   const goNext = useCallback(() => {
@@ -177,14 +196,24 @@ export function ReaderView({
   // 掛載前(SSR/首次 hydration)恆不顯示,避免 hydration 不一致。
   const showPlayer = mounted && canListen && listenOn;
 
-  // 還原上次捲動位置。
+  // 還原上次捲動位置。CJK web font 晚載入會把文字 reflow,若在字體就緒前就
+  // scrollTo 會落在錯位置 —— 故等 document.fonts.ready 後再算高度捲過去。
+  // cancelled 旗標守門:unmount / 換章(deps 變)時別再對舊頁面捲動。
   useEffect(() => {
     if (initialScrollRatio <= 0) return;
-    const id = requestAnimationFrame(() => {
-      const max = document.documentElement.scrollHeight - window.innerHeight;
-      window.scrollTo({ top: max * initialScrollRatio });
+    let cancelled = false;
+    void document.fonts.ready.then(() => {
+      if (cancelled) return;
+      // 仍留 rAF:確保字體就緒後的這一幀 layout 已 flush 再讀 scrollHeight。
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        window.scrollTo({ top: max * initialScrollRatio });
+      });
     });
-    return () => cancelAnimationFrame(id);
+    return () => {
+      cancelled = true;
+    };
   }, [initialScrollRatio, chapterId]);
 
   const flushProgress = useCallback(() => {
@@ -227,13 +256,28 @@ export function ReaderView({
     };
   }, [flushProgress]);
 
+  // 換章後解開鍵盤翻章鎖:新的 chapterId 進來代表上一次導航已落地。
+  useEffect(() => {
+    navLockRef.current = false;
+  }, [chapterId]);
+
   // 鍵盤左右鍵翻章（在輸入框內時不攔截）。
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
-      if (e.key === "ArrowLeft" && prevIdx !== null) router.push(chapterHref(prevIdx));
-      if (e.key === "ArrowRight" && nextIdx !== null) router.push(chapterHref(nextIdx));
+      // 忽略長按 auto-repeat:按住不放會狂送 keydown,一次跳好幾章。
+      if (e.repeat) return;
+      // 短鎖:上一次導航尚未落地(chapterId 還沒換)前不再送,避免快速連按跳章。
+      if (navLockRef.current) return;
+      if (e.key === "ArrowLeft" && prevIdx !== null) {
+        navLockRef.current = true;
+        router.push(chapterHref(prevIdx));
+      }
+      if (e.key === "ArrowRight" && nextIdx !== null) {
+        navLockRef.current = true;
+        router.push(chapterHref(nextIdx));
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -243,15 +287,28 @@ export function ReaderView({
   return (
     <div className="min-h-dvh">
       {/* 章內閱讀進度條 */}
-      <div className="fixed left-0 top-0 z-20 h-[3px] w-full bg-transparent">
+      <div
+        role="progressbar"
+        aria-label="閱讀進度"
+        aria-valuenow={Math.round(scrollPct)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        className="fixed left-0 top-0 z-20 h-[3px] w-full bg-transparent"
+      >
         <div
           className="h-full bg-primary transition-[width] duration-150"
           style={{ width: `${scrollPct}%` }}
         />
       </div>
 
-      {/* 頂部工具列 */}
-      <header className="sticky top-0 z-10 flex items-center gap-1 border-b border-border bg-background/85 px-3 py-2 pt-[env(safe-area-inset-top)] backdrop-blur">
+      {/* 頂部工具列。沉浸模式(chromeHidden)時往上滑出 + 淡出 + 不可點,
+          讓內文與讀者獨處(DESIGN:閱讀頁退到最後)。 */}
+      <header
+        className={cn(
+          "sticky top-0 z-10 flex items-center gap-1 border-b border-border bg-background/85 px-3 py-2 pt-safe-0 backdrop-blur transition-[transform,opacity] duration-300 ease-in-out",
+          chromeHidden && "pointer-events-none -translate-y-full opacity-0",
+        )}
+      >
         <Link
           href={`/book/${source}/${encodeURIComponent(sourceBookId)}`}
           className={buttonVariants({ variant: "ghost", size: "icon" })}
@@ -261,7 +318,7 @@ export function ReaderView({
         </Link>
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-sm text-muted-foreground">{bookTitle}</span>
-          <span className="text-xs text-muted-foreground/70">
+          <span className="text-xs text-muted-foreground">
             第 {position} / {totalChapters} 章
           </span>
         </span>
@@ -288,20 +345,21 @@ export function ReaderView({
             <Lock aria-hidden className="absolute bottom-1 right-1 size-3 rounded-full bg-background" />
           </Link>
         )}
-        <Button
-          variant={showSettings ? "secondary" : "ghost"}
-          size="icon"
-          aria-label="閱讀設定"
-          aria-pressed={showSettings}
-          onClick={() => setShowSettings((v) => !v)}
-        >
-          <Settings2 />
-        </Button>
-        <ThemeToggle />
-
-        {/* 設定面板:浮在工具列下方往下展開,不擠壓內文 */}
-        {showSettings && (
-          <div className="absolute inset-x-0 top-full origin-top animate-in slide-in-from-top-2 fade-in duration-200 border-b border-border bg-card px-4 py-3 text-sm shadow-lg">
+        {/* 設定面板改用 Radix Popover:免費拿到 Esc 關閉、點外面關閉、focus 管理。
+            open 狀態由 Popover 自管,故移除了原本的 showSettings。trigger 的 active 樣式
+            改吃 Radix data-state(open → secondary 底),不用手動 aria-pressed。 */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="閱讀設定"
+              className="data-[state=open]:bg-secondary data-[state=open]:text-secondary-foreground"
+            >
+              <Settings2 />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-72 p-4 text-sm">
             <SettingRow
               label="字級"
               value={`${Math.round(settings.fontSize * 16)}px`}
@@ -360,14 +418,20 @@ export function ReaderView({
                 </Button>
               </div>
             </div>
-          </div>
-        )}
+          </PopoverContent>
+        </Popover>
+        <ThemeToggle />
       </header>
 
-      {/* 內文 */}
+      {/* 內文。max-w 用 em(行寬隨字級縮放):em 相對「元素自身 font-size」,而
+          .reader-content 的 font-size = var(--reader-font-size),故 20em 恰是
+          DESIGN §79/§99 的「行寬 19–21em(≈28–38 CJK 字)」,字級調大時行寬同步變寬。
+          章末貓 / 上下章 仍用 max-w-2xl(那是 UI 字級、固定視覺寬度,與行寬量度脫鉤)。
+          onClick:點中央切工具列(沉浸),見 toggleChrome。 */}
       <article
+        onClick={toggleChrome}
         className={cn(
-          "reader-content mx-auto max-w-2xl px-5 py-8",
+          "reader-content mx-auto max-w-[20em] px-5 py-8",
           view.fontFamily === "serif" ? "font-serif" : "font-sans",
         )}
         style={
@@ -377,7 +441,14 @@ export function ReaderView({
           } as React.CSSProperties
         }
       >
-        <h1 className="mb-6 text-xl font-semibold">{chapterTitle}</h1>
+        {/* 章名區(DESIGN §80-81):Fraunces eyebrow(章序,uppercase + 寬字距)
+            + 黑體 700 章名 24–28px。eyebrow 用 --accent 點綴,克制出現於章名。 */}
+        <header className="mb-6">
+          <p className="font-display text-[0.8125rem] font-medium uppercase tracking-[0.12em] text-brand">
+            Chapter {position} / {totalChapters}
+          </p>
+          <h1 className="mt-1 font-sans text-2xl font-bold leading-snug">{chapterTitle}</h1>
+        </header>
         <ReaderContent content={content} containerRef={contentRef} />
       </article>
 
@@ -429,11 +500,16 @@ export function ReaderView({
             key={chapterId}
             bookSource={source}
             sourceBookId={sourceBookId}
+            bookTitle={bookTitle}
+            chapterTitle={chapterTitle}
+            bookCover={bookCover}
             idx={idx}
+            prevIdx={prevIdx}
             nextIdx={nextIdx}
             containerRef={contentRef}
             onPlayingChange={handleTtsPlayingChange}
             onRequestNext={goNext}
+            onRequestPrev={goPrev}
           />
         </>
       )}
