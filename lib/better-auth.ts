@@ -45,7 +45,10 @@ function authBaseUrl(): string | undefined {
  * ponytail: 只信任本專案自己的 Vercel 網域,不用 `*.vercel.app` 萬用字元。
  */
 function trustedOrigins(): string[] {
-  const origins = new Set<string>();
+  const origins = new Set<string>([
+    // 自訂正式網域(Vercel 的 VERCEL_PROJECT_PRODUCTION_URL 只給系統網域 koma-red,抓不到)。
+    "https://koma-read.vercel.app",
+  ]);
   if (process.env.BETTER_AUTH_URL) origins.add(process.env.BETTER_AUTH_URL);
   for (const host of [
     process.env.VERCEL_PROJECT_PRODUCTION_URL,

@@ -6,9 +6,8 @@ import { Mail, KeyRound } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth-client";
+import { validateLoginInput } from "@/lib/login-validation";
 
-// 寬鬆的 client 端格式檢查(純 UX);真正的驗證在 better-auth 伺服端。
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const INPUT_CLASS =
   "h-10 rounded-md border border-input bg-transparent px-3 outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
@@ -24,12 +23,9 @@ export function LoginForm() {
     e.preventDefault();
     setError(null);
     const addr = email.trim();
-    if (!EMAIL_RE.test(addr)) {
-      setError("請輸入有效的 email");
-      return;
-    }
-    if (password.length < 8) {
-      setError("密碼至少 8 碼");
+    const invalid = validateLoginInput(addr, password);
+    if (invalid) {
+      setError(invalid);
       return;
     }
     start(async () => {

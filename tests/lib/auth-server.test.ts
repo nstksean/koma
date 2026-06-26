@@ -22,7 +22,7 @@ vi.mock("next/headers", () => ({
   }),
 }));
 
-// better-auth 服務端實例:整顆 mock 掉(避免載入 @/db、@/lib/email),
+// better-auth 服務端實例:整顆 mock 掉(避免載入 @/db),
 // 只留可控的 api.getSession,讓每個 test 自行回 session 或 null。
 vi.mock("@/lib/better-auth", () => ({
   auth: { api: { getSession } },
