@@ -29,7 +29,7 @@ export default async function LoginPage() {
 
       <h1 className="mb-1 text-2xl font-semibold tracking-tight">登入 Koma</h1>
       <p className="mb-6 text-sm text-muted-foreground">
-        輸入 email,我們會寄一組 6 位數驗證碼給你。登入後聽書額度與進度跨裝置同步。
+        用 email 與密碼登入或註冊。登入後聽書額度與進度跨裝置同步。
       </p>
 
       <LoginForm />

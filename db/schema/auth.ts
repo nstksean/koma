@@ -4,7 +4,8 @@ import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
  * better-auth 核心 schema（v1.6.20）。欄位由 `getAuthTables()` 對齊產出,欄位名須與
  * better-auth field 名完全一致(camelCase);日期用 integer timestamp(秒)、boolean 用 integer。
  *
- * - emailOTP 不需獨立表:OTP 存在 verification(以 hashed 形式,見 lib/better-auth.ts)。
+ * - email+密碼:密碼 scrypt hash 存在 account.password(providerId="credential")。
+ *   verification 表目前閒置(留作日後 email 驗證/密碼重設用);移除需配套 migration,故保留。
  * - rateLimit 表因 rateLimit.storage="database" 而需要(serverless 多實例共享限流狀態)。
  *
  * 與舊「邀請碼 + HMAC cookie」系統並存;額度仍走 tts_usage(identity 字串),

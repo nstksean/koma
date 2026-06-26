@@ -52,7 +52,7 @@ Vercel → 專案 → Settings → Environment Variables,scope 選 **Production*
 | `TURSO_AUTH_TOKEN` | 第 1 步的 token。 |
 | `SESSION_SECRET` | 舊邀請碼 session cookie 的 HMAC 簽章金鑰,**至少 16 字元**。production 缺這個會在啟動時直接 throw([lib/auth.ts:44](../../lib/auth.ts#L44))。產一把:`openssl rand -base64 32`。 |
 | `ADMIN_CODES` | 你的 admin 邀請碼(逗號分隔)。沒設就沒人是 admin。 |
-| `BETTER_AUTH_SECRET` | better-auth(Email OTP 登入)的簽章金鑰,**≥32 字元**。production 缺/過短會 throw([lib/better-auth.ts](../../lib/better-auth.ts))。`openssl rand -base64 32`。 |
+| `BETTER_AUTH_SECRET` | better-auth(Email + 密碼登入)的簽章金鑰,**≥32 字元**。production 缺/過短會 throw([lib/better-auth.ts](../../lib/better-auth.ts))。`openssl rand -base64 32`。 |
 | `BETTER_AUTH_URL` | 站台正式 URL(含 protocol,例 `https://koma.app`)。production 缺會 throw。 |
 
 ### 選填
@@ -65,19 +65,14 @@ Vercel → 專案 → Settings → Environment Variables,scope 選 **Production*
 | `ELEVENLABS_*` / `IQT_TTS_*` | — | 備選 / 自家音源,目前仍在 spike。 |
 | `TTS_CACHE_MAX_MB` | 1024 | 同上,TTS 上線後且改用持久化儲存後才有意義。 |
 
-## 4b. Email OTP 登入(better-auth)
+## 4b. Email + 密碼登入(better-auth)
 
-新的 email 登入與舊邀請碼系統**並存**(身分解析見 [lib/auth-server.ts](../../lib/auth-server.ts)):email 登入者 = member、`ADMIN_EMAILS` 清單 = admin。額度計在 `user:<userId>` 桶,**不需要對 `tts_usage` 做資料遷移**;auth 表(`user`/`session`/`account`/`verification`/`rateLimit`)由第 2 步的 migration 一併建立。
+email 登入與舊邀請碼系統**並存**(身分解析見 [lib/auth-server.ts](../../lib/auth-server.ts)):email 登入者 = member、`ADMIN_EMAILS` 清單 = admin。額度計在 `user:<userId>` 桶,**不需要對 `tts_usage` 做資料遷移**;auth 表(`user`/`session`/`account`/`verification`/`rateLimit`)由第 2 步的 migration 一併建立。
 
-**寄信前置(prod 必做)**:better-auth 透過 [Resend](https://resend.com) 寄 6 位數 OTP。
-
-1. Resend 後台**驗證寄件網域**(加 DNS 記錄),拿一把 API key。
-2. Vercel 設 `RESEND_API_KEY` 與 `EMAIL_FROM`(例 `"Koma <login@yourdomain.com>"`,網域須與步驟 1 一致)。
-3. **缺這兩個變數時 prod 啟動寄信會 throw**(避免 OTP 靜默進 log、使用者收不到信卻以為成功);dev 沒設則把 OTP 印到 server console。
+**不寄信、不需網域**:密碼由 better-auth 以 scrypt hash 存進 `account.password`。`requireEmailVerification: false`,所以不寄驗證信,也沒有「忘記密碼」email 重設(等買了網域再加 `sendResetPassword`)。
 
 | 變數 | 何時設 |
 |---|---|
-| `RESEND_API_KEY` / `EMAIL_FROM` | 要真寄 OTP 信(prod 必填)。 |
 | `ADMIN_EMAILS` | 以哪些 email 登入算 admin(逗號分隔)。沒設 = 所有 email 登入者皆 member。 |
 
 ## 5. 部署
@@ -95,7 +90,7 @@ Build command 用預設的 `next build` 即可,不要加 migration。
 
 - 首頁能開、書籍封面能載入(外部圖片網域已在 [next.config.ts](../../next.config.ts) 放行)。
 - 用 admin 碼登入,確認 session 有效(代表 `SESSION_SECRET` + Turso 都通)。
-- `/login` 輸 email → 收到 6 碼信 → 輸碼登入,身分顯示「會員」(代表 better-auth + Resend 都通)。
+- `/login` 用 email + 密碼註冊 → 自動登入,身分顯示「會員」(代表 better-auth 通)。
 - 「繼續閱讀」「章節分頁」等需要寫 DB 的功能能存能讀。
 
 ---

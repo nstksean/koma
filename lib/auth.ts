@@ -192,10 +192,10 @@ export function resolveSessionId(
   return existing && existing.role === role ? existing.id : newSessionId();
 }
 
-// ─── better-auth 橋接(Email OTP 登入)──────────────────────────────────────
-// better-auth 管真實、已驗證的 email 身分;額度仍走 tts_usage,登入者額度 identity =
+// ─── better-auth 橋接(Email + 密碼登入)────────────────────────────────────
+// better-auth 管真實的 email 身分;額度仍走 tts_usage,登入者額度 identity =
 // `user:<userId>`,與舊 admin:/member:/guest:/iqt: 命名空間共存(零遷移)。role 由 email
-// 決定:ADMIN_EMAILS 命中 = admin、其餘已驗證 email = member。解析入口見 lib/auth-server.ts。
+// 決定:ADMIN_EMAILS 命中 = admin、其餘 email = member。解析入口見 lib/auth-server.ts。
 
 /** admin email 允許清單(逗號分隔,小寫正規化)。 */
 export function adminEmails(): string[] {
