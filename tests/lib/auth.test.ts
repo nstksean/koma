@@ -99,6 +99,13 @@ describe("redeemCode", () => {
     expect(await redeemCode("ref-nobody")).toBeNull();
   });
 
+  it("env 推薦碼大小寫不敏感(KOMA2026 / koma2026 都過)", async () => {
+    vi.stubEnv("REFERRAL_CODES", "KOMA2026");
+    expect(await redeemCode("koma2026")).toBe("member");
+    expect(await redeemCode("Koma2026")).toBe("member");
+    expect(await redeemCode("  KOMA2026  ")).toBe("member"); // 去空白後比對
+  });
+
   it("DB member 碼(未停用)→ role member", async () => {
     await testDb.insert(accessCodes).values({
       id: "code1",

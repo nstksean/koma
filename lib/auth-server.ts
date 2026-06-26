@@ -34,6 +34,27 @@ export async function getServerAuth(): Promise<Auth> {
   return guestAuth(clientIpFromHeaders((name) => h.get(name)));
 }
 
+export interface ServerUser {
+  readonly email: string;
+  readonly name: string;
+  readonly createdAt: Date;
+}
+
+/**
+ * 目前 better-auth 登入者的帳號資料(email / 顯示名 / 註冊時間),沒登入(訪客或舊邀請碼)回 null。
+ * 給 /unlock 個人頁顯示用。ponytail: 與 getServerAuth 各自呼叫一次 getSession;unlock 是低流量頁,
+ *           不值得為省一次查詢把 user 塞進 Auth 型別污染全站。
+ */
+export async function getServerUser(): Promise<ServerUser | null> {
+  const session = await betterAuth.api.getSession({ headers: await headers() });
+  if (!session?.user) return null;
+  return {
+    email: session.user.email,
+    name: session.user.name,
+    createdAt: session.user.createdAt,
+  };
+}
+
 /**
  * 書架/進度的擁有者 key(RSC / server action 用)。guest 走每瀏覽器一個的 koma_guest
  * cookie(middleware 寫入)→ 各自一桶,而非與額度共用的 hashed IP。詳見 lib/auth.ts 的 dataOwner。

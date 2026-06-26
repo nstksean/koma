@@ -162,8 +162,13 @@ export async function redeemCode(code: string): Promise<"admin" | "member" | nul
   for (const ac of adminCodes()) {
     if (safeEqual(ac, trimmed)) return "admin";
   }
+  // 推薦碼大小寫不敏感:這是人工分享的好記碼(例 KOMA2026),使用者常打成 koma2026,
+  // 放寬比對才不卡人;兩邊一起轉小寫,仍走 constant-time 比對(正規化後等長)。
+  // 註:admin 碼(env)較敏感、DB 隨機碼(koma-AbC…,base64url 大小寫有意義、靠複製貼上)
+  //     皆維持大小寫敏感,不在此正規化。
+  const lower = trimmed.toLowerCase();
   for (const rc of referralCodes()) {
-    if (safeEqual(rc, trimmed)) return "member";
+    if (safeEqual(rc.toLowerCase(), lower)) return "member";
   }
 
   const rows = await db

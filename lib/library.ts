@@ -1,9 +1,12 @@
 import "server-only";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { books, chapters, library, progress, type Book } from "@/db/schema";
 import { getServerDataOwner } from "@/lib/auth-server";
 import { newId } from "./ids";
+
+/** 書架排序方式:最近閱讀(預設) / 書名 / 加入時間。 */
+export type LibrarySort = "recent" | "title" | "added";
 
 /** 書架/進度的擁有者(member/admin 各自一桶,guest 按每瀏覽器 cookie id)。 */
 async function currentUserId(): Promise<string> {
@@ -26,6 +29,25 @@ export interface ContinueReading {
   readonly scrollRatio: number;
   readonly position: number; // 第幾章(1-based 序位)
   readonly totalChapters: number;
+}
+
+export interface LibraryStats {
+  readonly saved: number; // 書架收藏本數
+  readonly read: number; // 開過(有閱讀進度)的本數
+}
+
+/** 個人頁的暖心統計:書架幾本、讀過幾本。兩個 count,擁有者隔離同其餘查詢。 */
+export async function getLibraryStats(): Promise<LibraryStats> {
+  const userId = await currentUserId();
+  const [saved] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(library)
+    .where(eq(library.userId, userId));
+  const [read] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(progress)
+    .where(eq(progress.userId, userId));
+  return { saved: saved?.n ?? 0, read: read?.n ?? 0 };
 }
 
 export async function addToLibrary(bookId: string): Promise<void> {
@@ -53,9 +75,20 @@ export async function isInLibrary(bookId: string): Promise<boolean> {
   return Boolean(row);
 }
 
-/** 書架列表，含「續讀」資訊；依「最近閱讀」排序（沒讀過的退回加入時間）。 */
-export async function listLibrary(): Promise<readonly LibraryItem[]> {
+/**
+ * 書架列表，含「續讀」資訊。
+ * 排序:recent=最近閱讀(沒讀過的退回加入時間,預設) / title=書名 / added=加入時間。
+ */
+export async function listLibrary(
+  sort: LibrarySort = "recent",
+): Promise<readonly LibraryItem[]> {
   const userId = await currentUserId();
+  const orderBy =
+    sort === "title"
+      ? [asc(books.title)]
+      : sort === "added"
+        ? [desc(library.addedAt)]
+        : [desc(sql`COALESCE(${progress.updatedAt}, ${library.addedAt})`)];
   const rows = await db
     .select({
       book: books,
@@ -73,7 +106,7 @@ export async function listLibrary(): Promise<readonly LibraryItem[]> {
     )
     .leftJoin(chapters, eq(chapters.id, progress.chapterId))
     .where(eq(library.userId, userId))
-    .orderBy(desc(sql`COALESCE(${progress.updatedAt}, ${library.addedAt})`));
+    .orderBy(...orderBy);
 
   return rows.map((r) => ({
     book: r.book,
