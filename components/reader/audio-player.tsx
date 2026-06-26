@@ -50,6 +50,10 @@ const AUTOPLAY_FLAG = "koma:autoplay";
 /** 睡眠定時選項(分鐘)。 */
 const SLEEP_OPTIONS = [15, 30, 60] as const;
 
+/** popover 選單項共用互動態:hover + active(觸控反白,無 hover 也有反饋)+ focus-visible 三態一致。 */
+const MENU_ITEM_STATES =
+  "outline-none transition-colors hover:bg-accent hover:text-accent-foreground active:bg-accent active:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground";
+
 /** 使用者面提示文案(集中管理,避免重複字串漂移)。 */
 const TTS_MESSAGES = {
   synthFailed: GENERIC_SYNTH_FAILED, // 細分原因見 describeFailure;此為退路
@@ -609,132 +613,8 @@ export function AudioPlayer({
       <audio ref={audioRef} preload="metadata" className="hidden" />
 
       <div className="mx-auto flex max-w-3xl flex-col gap-2 border-t border-border bg-card px-4 py-3 shadow-[var(--shadow-player)]">
-        {/* 第一列:控制鈕 + 時間 + 進度條 */}
+        {/* 第一列:時間 + 進度條(獨佔整列,進度條不再跟控制鈕擠) */}
         <div className="flex items-center gap-3">
-          <Button
-            variant="default"
-            size="icon"
-            // ponytail: 主控鈕放大為 48px 圓鈕 + 24px 字符(原 40px 方殼內 16px 字符太空)
-            className="size-12 rounded-full [&_svg]:size-6"
-            aria-label={isPlaying ? "暫停" : "播放"}
-            disabled={isLoading}
-            onClick={handlePlayPause}
-          >
-            {isLoading ? (
-              <Loader2 className="animate-spin motion-reduce:animate-none" />
-            ) : isPlaying ? (
-              <Pause />
-            ) : (
-              <Play />
-            )}
-          </Button>
-
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label={`語速 ${rateLabel},點擊調整`}
-                className="min-w-[3.75rem] tabular-nums"
-              >
-                <Gauge />
-                {rateLabel}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              side="top"
-              align="start"
-              className="w-28"
-              role="menu"
-            >
-              {PLAYBACK_RATES.map((rate, i) => {
-                const selected = i === rateIdx;
-                return (
-                  <PopoverClose key={rate} asChild>
-                    <button
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={selected}
-                      onClick={() => handleRateSelect(i)}
-                      className={cn(
-                        "flex w-full items-center justify-between rounded-sm px-2.5 py-1.5 text-sm tabular-nums outline-none transition-colors",
-                        "hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground",
-                        selected && "font-medium text-brand",
-                      )}
-                    >
-                      {`${rate}×`}
-                      {selected && <Check className="size-4" />}
-                    </button>
-                  </PopoverClose>
-                );
-              })}
-            </PopoverContent>
-          </Popover>
-
-          {/* 夜讀選項:睡眠定時 + 自動續播下一章(貓陪你夜讀)。 */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label={
-                  sleepActive
-                    ? `睡眠定時剩 ${formatTime(sleepRemainingMs)},點擊調整夜讀選項`
-                    : "夜讀選項:睡眠定時、自動續播"
-                }
-                className={cn("gap-1.5 tabular-nums", nightActive && "text-brand")}
-              >
-                <Moon />
-                {sleepActive && (
-                  <span className="text-xs">{formatTime(sleepRemainingMs)}</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent side="top" align="start" className="w-48">
-              <p className="px-2.5 pb-1 text-xs font-medium text-muted-foreground">
-                睡眠定時
-              </p>
-              {[null, ...SLEEP_OPTIONS].map((min) => {
-                const selected = sleepMin === min;
-                return (
-                  <button
-                    key={min ?? "off"}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={selected}
-                    onClick={() => handleSleepSelect(min)}
-                    className={cn(
-                      "flex w-full items-center justify-between rounded-sm px-2.5 py-1.5 text-sm tabular-nums outline-none transition-colors",
-                      "hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground",
-                      selected && "font-medium text-brand",
-                    )}
-                  >
-                    {min === null ? "關閉" : `${min} 分`}
-                    {selected && <Check className="size-4" />}
-                  </button>
-                );
-              })}
-
-              <div className="my-1 border-t border-border" />
-
-              <button
-                type="button"
-                role="menuitemcheckbox"
-                aria-checked={autoNext}
-                onClick={handleToggleAutoNext}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-sm outline-none transition-colors",
-                  "hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground",
-                  autoNext && "font-medium text-brand",
-                )}
-              >
-                <Repeat className="size-4 shrink-0" />
-                <span className="flex-1 text-left">自動續播下一章</span>
-                {autoNext && <Check className="size-4 shrink-0" />}
-              </button>
-            </PopoverContent>
-          </Popover>
-
           <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
             {formatTime(positionMs)}
           </span>
@@ -759,7 +639,137 @@ export function AudioPlayer({
           </span>
         </div>
 
-        {/* 第二列:首播 loading / error 的克制提示(沿用 muted 風格)。 */}
+        {/* 第二列:控制鈕 — 播放鈕置中做主角,速度左、夜讀右(grid 三欄才能真置中) */}
+        <div className="grid grid-cols-3 items-center">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`語速 ${rateLabel},點擊調整`}
+                className="min-w-[3.75rem] justify-self-start tabular-nums"
+              >
+                <Gauge />
+                {rateLabel}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              side="top"
+              align="start"
+              className="w-28"
+              role="menu"
+            >
+              {PLAYBACK_RATES.map((rate, i) => {
+                const selected = i === rateIdx;
+                return (
+                  <PopoverClose key={rate} asChild>
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={selected}
+                      onClick={() => handleRateSelect(i)}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-sm px-2.5 py-1.5 text-sm tabular-nums",
+                        MENU_ITEM_STATES,
+                        selected && "font-medium text-brand",
+                      )}
+                    >
+                      {`${rate}×`}
+                      {selected && <Check className="size-4" />}
+                    </button>
+                  </PopoverClose>
+                );
+              })}
+            </PopoverContent>
+          </Popover>
+
+          {/* 主控播放鈕:置中、56px 圓鈕做主角(brand 底,符合 DESIGN「accent 只出現在主按鈕」)。 */}
+          <Button
+            variant="default"
+            size="icon"
+            className="size-14 justify-self-center rounded-full [&_svg]:size-7"
+            aria-label={isPlaying ? "暫停" : "播放"}
+            disabled={isLoading}
+            onClick={handlePlayPause}
+          >
+            {isLoading ? (
+              <Loader2 className="animate-spin motion-reduce:animate-none" />
+            ) : isPlaying ? (
+              <Pause />
+            ) : (
+              <Play />
+            )}
+          </Button>
+
+          {/* 夜讀選項:睡眠定時 + 自動續播下一章(貓陪你夜讀)。 */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={
+                  sleepActive
+                    ? `睡眠定時剩 ${formatTime(sleepRemainingMs)},點擊調整夜讀選項`
+                    : "夜讀選項:睡眠定時、自動續播"
+                }
+                className={cn(
+                  "gap-1.5 justify-self-end tabular-nums",
+                  nightActive && "text-brand",
+                )}
+              >
+                <Moon />
+                {sleepActive && (
+                  <span className="text-xs">{formatTime(sleepRemainingMs)}</span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent side="top" align="start" className="w-48">
+              <p className="px-2.5 pb-1 text-xs font-medium text-muted-foreground">
+                睡眠定時
+              </p>
+              {[null, ...SLEEP_OPTIONS].map((min) => {
+                const selected = sleepMin === min;
+                return (
+                  <button
+                    key={min ?? "off"}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={selected}
+                    onClick={() => handleSleepSelect(min)}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-sm px-2.5 py-1.5 text-sm tabular-nums",
+                      MENU_ITEM_STATES,
+                      selected && "font-medium text-brand",
+                    )}
+                  >
+                    {min === null ? "關閉" : `${min} 分`}
+                    {selected && <Check className="size-4" />}
+                  </button>
+                );
+              })}
+
+              <div className="my-1 border-t border-border" />
+
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={autoNext}
+                onClick={handleToggleAutoNext}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-sm",
+                  MENU_ITEM_STATES,
+                  autoNext && "font-medium text-brand",
+                )}
+              >
+                <Repeat className="size-4 shrink-0" />
+                <span className="flex-1 text-left">自動續播下一章</span>
+                {autoNext && <Check className="size-4 shrink-0" />}
+              </button>
+            </PopoverContent>
+          </Popover>
+        </div>
+
+        {/* 第三列:首播 loading / error 的克制提示(沿用 muted 風格)。 */}
         {isLoading && (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Loader2 className="size-3 animate-spin motion-reduce:animate-none" />

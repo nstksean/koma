@@ -417,11 +417,11 @@ function SettingRow({
     <div className="flex items-center justify-between py-1.5">
       <span className="text-muted-foreground">{label}</span>
       <div className="flex items-center gap-3">
-        <Button variant="outline" size="icon" className="size-8" aria-label={`減少${label}`} onClick={onDec}>
+        <Button variant="outline" size="icon" aria-label={`減少${label}`} onClick={onDec}>
           <Minus />
         </Button>
         <span className="w-14 text-center tabular-nums">{value}</span>
-        <Button variant="outline" size="icon" className="size-8" aria-label={`增加${label}`} onClick={onInc}>
+        <Button variant="outline" size="icon" aria-label={`增加${label}`} onClick={onInc}>
           <Plus />
         </Button>
       </div>

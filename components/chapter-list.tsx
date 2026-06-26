@@ -65,7 +65,7 @@ export function ChapterList({
           type="button"
           onClick={() => setAsc((a) => !a)}
           aria-label={asc ? "改為倒序" : "改為正序"}
-          className="inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-input hover:bg-accent"
+          className="inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-input transition-colors hover:bg-accent active:bg-accent"
         >
           {asc ? <ArrowDownAZ className="size-4" /> : <ArrowUpAZ className="size-4" />}
         </button>
@@ -92,7 +92,7 @@ export function ChapterList({
                 type="button"
                 onClick={() => setWinStart(s)}
                 className={cn(
-                  "shrink-0 rounded-full border border-input px-2.5 py-1 text-xs transition-colors hover:bg-accent",
+                  "shrink-0 rounded-full border border-input px-3 py-1.5 text-xs transition-colors hover:bg-accent active:bg-accent",
                   start === s && "bg-accent font-medium",
                 )}
               >
