@@ -20,7 +20,7 @@ Koma 取自一隻黑貓的名字(日文 コマ 也是「漫畫的一格 / 翻頁
 | 樣式 | Tailwind v4(CSS-first,無 config 檔) + shadcn/ui |
 | 資料層 | Drizzle ORM + libSQL / Turso(本機 `file:` 可離線) |
 | 抓取 | `fetch` + `cheerio`(無 headless) |
-| 架構 | Server Actions + `lib/` 直呼(無 `app/api/` route handlers) |
+| 架構 | Server Actions + `lib/` 直呼;Route Handler 僅用於 auth 與 TTS(`/api/auth/*`、`/api/tts/*`) |
 | 測試 | Vitest(in-memory libSQL harness) + Playwright(E2E) |
 
 ## 開始開發
