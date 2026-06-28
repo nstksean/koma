@@ -56,7 +56,7 @@ export function ChapterDrawer({
           aria-describedby={undefined}
           className="fixed right-0 top-0 z-50 flex h-full w-[min(22rem,88vw)] flex-col bg-background shadow-xl outline-none"
         >
-          <div className="flex items-center justify-between border-b border-border px-3 py-2">
+          <div className="flex items-center justify-between border-b border-border px-3 pb-2 pt-safe-2">
             <Dialog.Title className="text-sm font-medium">章節目錄</Dialog.Title>
             <Dialog.Close asChild>
               <Button variant="ghost" size="icon" aria-label="關閉目錄">
