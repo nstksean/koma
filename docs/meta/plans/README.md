@@ -13,6 +13,8 @@ Koma 的實作計畫與分階段執行文件。每份檔案開頭標註日期與
 | [04-stage3-tts-pipeline.md](04-stage3-tts-pipeline.md) | 執行文件④:階段 3 TTS 聽書 pipeline(音源層 / 播放管線層解耦)。 | 🚧 實作中 |
 | [better-auth-email-otp.md](better-auth-email-otp.md) | better-auth 登入(雙系統並存、額度綁 userId)。 | ✅ 已上線(`11697c6`);⚠️ OTP 已於 2026-06-26 改為 email+密碼 |
 | [evidence-ios-pwa-background-audio.md](evidence-ios-pwa-background-audio.md) | `/evidence-check` 報告:iOS web/PWA 背景音訊可靠性。驗證 `mvp-stage0-plan.md` §8.5。 | 調查報告 · **推進前必讀** |
+| [ux-enhancements.md](ux-enhancements.md) | 全 App UX 盤點(iOS 切版 / 聽書背景 / 對比 / 登入動線),分 6 階段交付。 | 規劃中 |
+| [tts-shared-cache.md](tts-shared-cache.md) | TTS 音檔改走 Vercel Blob 共享快取,解跨實例重複合成與量突刺。 | 規劃中 |
 
 > **01–03 已畢業(2026-06-17 對齊):** 三份執行文件原自述「尚未動程式碼」,現已全部實作落地(initial commit `276af08` 起),狀態行已標 ✅ 並各自註明與計畫的偏差(02:Route Handlers→Server Actions;03:首發來源 czbooks→ttkan)。stage-0 §7 DoD 六項實質達成。
 >
