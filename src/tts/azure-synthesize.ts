@@ -16,20 +16,21 @@ import type { AzureBoundary, CharTimestamp } from "./types";
 WebsocketMessageAdapter.forceNpmWebSocket = true;
 import { azureWordsToChars, utf16ToCodePointOffset } from "./azure-normalize";
 import { chunkContent, type ContentChunk } from "./chunk";
-import { pcmBytesToMs, shiftCharTimestamps } from "./stitch";
-import { pcmPartsToWav, pcmTotalBytes } from "./wav";
+import { shiftCharTimestamps } from "./stitch";
 
 /**
  * Azure 合成引擎產物(一章)。server-only:依賴 process.env 與 Node-only SDK,
  * 不可被 bundle 進 client,故本檔不從 src/tts/index.ts barrel 匯出。
  */
 export interface AzureChapterResult {
-  readonly wav: Buffer; // 完整 WAV(44-byte header + PCM)
+  readonly mp3: Buffer; // 完整章節 MP3(各段 MP3 直接 Buffer.concat 串接)
   readonly charTimestamps: readonly CharTimestamp[]; // 全域 charIndex、全域 ms、按 startMs 遞增
-  readonly durationMs: number; // = pcmBytesToMs(總 PCM bytes)
+  readonly durationMs: number; // = 各段 SDK audioDuration 累加
 }
 
-const SAMPLE_RATE = 24_000; // Raw24Khz16BitMonoPcm
+// 24kHz/48kbps mono MP3:取代舊 Raw24Khz16BitMonoPcm(384kbps WAV)→ 檔案小約 8×。
+// ponytail: 48kbps 對單聲道語音夠用;要更高音質改 Audio24Khz96KBitRateMonoMp3。
+const OUTPUT_FORMAT = sdk.SpeechSynthesisOutputFormat.Audio24Khz48KBitRateMonoMp3;
 const MAX_CODE_POINTS = 900; // 每段 code-point 上限(避開 Azure 單次音長上限)
 const MAX_ATTEMPTS = 4; // 單段合成失敗重試上限(429 並發限制需多幾次讓連線槽空出)
 const RETRY_BASE_MS = 250; // 一般錯誤退避基數(指數退避 + jitter)
@@ -77,14 +78,18 @@ function boundaryTypeLabel(
   }
 }
 
-/** 單段合成結果:raw PCM bytes + 段內(textOffset 從 0 起算)的 wordBoundary。 */
+/**
+ * 單段合成結果:該段 MP3 bytes + 段內(textOffset 從 0 起算)的 wordBoundary
+ * + 該段真實時長(SDK audioDuration,格式無關 —— 取代舊「PCM byte 數換算」)。
+ */
 interface SegmentResult {
-  readonly pcm: Uint8Array;
+  readonly audio: Uint8Array;
+  readonly durationMs: number;
   readonly boundaries: readonly AzureBoundary[];
 }
 
 /**
- * 用 SDK 合成單段純文字 → raw PCM + 沿途收集 wordBoundary(段內相對)。
+ * 用 SDK 合成單段純文字 → MP3 bytes + 沿途收集 wordBoundary(段內相對)。
  * 不給 AudioConfig,從 result.audioData 取 bytes;finally close。
  */
 function synthesizeSegment(
@@ -96,7 +101,7 @@ function synthesizeSegment(
   return new Promise((resolve, reject) => {
     const cfg = sdk.SpeechConfig.fromSubscription(key, region);
     cfg.speechSynthesisVoiceName = voice;
-    cfg.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Raw24Khz16BitMonoPcm;
+    cfg.speechSynthesisOutputFormat = OUTPUT_FORMAT;
     // 顯式打開 wordBoundary(防 SDK 版本差異)。
     cfg.setProperty(
       sdk.PropertyId.SpeechServiceResponse_RequestWordBoundary,
@@ -125,8 +130,11 @@ function synthesizeSegment(
       (result) => {
         try {
           if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
-            const pcm = new Uint8Array(result.audioData);
-            resolve({ pcm, boundaries: [...collected] });
+            const audio = new Uint8Array(result.audioData);
+            // audioDuration 是 SDK 回報的該段真實渲染時長(ticks),與輸出格式無關 ——
+            // 改用壓縮格式後不能再靠 byteLength 換算時長,這才是正確的跨段時間軸來源。
+            const durationMs = result.audioDuration / TICKS_PER_MS;
+            resolve({ audio, durationMs, boundaries: [...collected] });
           } else {
             const detail = result.errorDetails ?? `reason=${result.reason}`;
             reject(new Error(`Azure 合成未完成:${detail}`));
@@ -175,17 +183,21 @@ async function synthesizeSegmentWithRetry(
   );
 }
 
-/** 逐段合成的累積結果:各段 PCM(順序保留)+ 各段已平移成全章絕對時間的 charTimestamp。 */
+/**
+ * 逐段合成的累積結果:各段 MP3(順序保留)、各段已平移成全章絕對時間的
+ * charTimestamp,及全章總時長(各段 durationMs 累加)。
+ */
 interface ChunkSynthesis {
   readonly parts: readonly Uint8Array[];
   readonly charBatches: readonly (readonly CharTimestamp[])[];
+  readonly totalMs: number;
 }
 
 /**
- * 逐段序列合成(不可並行):保 PCM 順序 + 避 Azure 併發限制。
+ * 逐段序列合成(不可並行):保音檔順序 + 避 Azure 併發限制。
  * 每段 wordBoundary → azureWordsToChars(-cpStart) 得全域 charIndex →
- * shiftCharTimestamps(+cumulativeMs) 得全章絕對時間。cumulativeMs 只用
- * pcmBytesToMs 累積(絕不用 boundary ms):PCM 長度才是該段真實貢獻時長。
+ * shiftCharTimestamps(+cumulativeMs) 得全章絕對時間。cumulativeMs 用各段
+ * SDK audioDuration 累積(絕不用 boundary ms):那才是該段對音檔貢獻的真實時長。
  */
 async function synthesizeChunks(
   chunks: readonly ContentChunk[],
@@ -198,11 +210,11 @@ async function synthesizeChunks(
   let cumulativeMs = 0;
 
   for (const chunk of chunks) {
-    // 純空白/換行段:跳過合成,貢獻 0 PCM、0 boundary。cpStart 已由 chunkContent
+    // 純空白/換行段:跳過合成,貢獻 0 音檔、0 boundary。cpStart 已由 chunkContent
     // 處理,charIndex 索引空間不受影響(後續段照樣對齊),無需補。
     if (chunk.text.trim() === "") continue;
 
-    const { pcm, boundaries } = await synthesizeSegmentWithRetry(
+    const { audio, durationMs, boundaries } = await synthesizeSegmentWithRetry(
       key,
       region,
       voice,
@@ -214,18 +226,23 @@ async function synthesizeChunks(
     const segChars = azureWordsToChars(boundaries, -chunk.cpStart);
     charBatches.push(shiftCharTimestamps(segChars, cumulativeMs));
 
-    parts.push(pcm);
-    cumulativeMs += pcmBytesToMs(pcm.byteLength);
+    parts.push(audio);
+    cumulativeMs += durationMs;
   }
 
-  return { parts, charBatches };
+  return { parts, charBatches, totalMs: cumulativeMs };
 }
 
 /**
  * 把一章已清洗純文字合成成「音檔 + 逐字 timestamp」(04 §2.1.1 / §3)。
  *
  * 流程:chunkContent → synthesizeChunks(逐段序列合成 + 全章時間平移)→
- * pcmPartsToWav 直接把各段 PCM 封成 WAV(不先 merge 成全章 PCM,省一份全章拷貝)。
+ * Buffer.concat 把各段 MP3 直接串接成全章音檔。
+ *
+ * ⚠️ MP3 串接的已知天花板:每段 MP3 在解碼時各帶 ~編碼器前導靜音(encoder delay),
+ * 串接處可能有極小間隙,使播放時間軸與 charTimestamps 隨段數累積微小偏移。章節分段
+ * 大(MAX_CODE_POINTS=900,每段數分鐘),seam 少,通常無感;上線前用真實音檔驗一次
+ * 高亮同步即可。若偏移有感,升級路徑:改回 PCM→自己封 WAV,或改 Opus/WebM 容器串接。
  *
  * 索引對齊鐵則:charTimestamps.charIndex 落在 [...plainText] 的 code-point 索引空間,
  * 與渲染端 [...chapterContent] 逐字編號一致。
@@ -246,13 +263,17 @@ export async function synthesizeAzureChapter(
   }
 
   const chunks = chunkContent(plainText, MAX_CODE_POINTS);
-  const { parts, charBatches } = await synthesizeChunks(chunks, key, region, voice);
+  const { parts, charBatches, totalMs } = await synthesizeChunks(
+    chunks,
+    key,
+    region,
+    voice,
+  );
 
-  // 各段 PCM 直接封成 WAV(省掉中間 merged 全章拷貝);durationMs 用累計 byteLength。
-  const wav = pcmPartsToWav(parts, SAMPLE_RATE);
-  const durationMs = pcmBytesToMs(pcmTotalBytes(parts));
+  // 各段 MP3 直接串接成全章音檔;durationMs = 各段 SDK audioDuration 累加。
+  const mp3 = Buffer.concat(parts);
   // 各段 shifted 攤平:段序即時間序,天然按 startMs 遞增。
   const charTimestamps: readonly CharTimestamp[] = charBatches.flat();
 
-  return { wav, charTimestamps, durationMs };
+  return { mp3, charTimestamps, durationMs: totalMs };
 }

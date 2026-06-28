@@ -1,37 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { BYTES_PER_MS, pcmBytesToMs, shiftCharTimestamps } from "@/src/tts/stitch";
+import { shiftCharTimestamps } from "@/src/tts/stitch";
 import type { CharTimestamp } from "@/src/tts/types";
 
 /**
- * stitch — PCM 時間軸工具(純函式)。
- * pcmBytesToMs 用 byte 數換算毫秒(Raw24Khz16BitMonoPcm = 48 bytes/ms);
+ * stitch — 字級 timestamp 時間軸工具(純函式)。
  * shiftCharTimestamps 整體平移時間且不可變(回傳新陣列、保留 char/charIndex)。
  */
 describe("stitch", () => {
-  describe("BYTES_PER_MS", () => {
-    it("= 48(24000Hz × 16bit × 1ch / 8 / 1000)", () => {
-      expect(BYTES_PER_MS).toBe(48);
-    });
-  });
-
-  describe("pcmBytesToMs", () => {
-    it("48000 bytes → 1000 ms", () => {
-      expect(pcmBytesToMs(48_000)).toBe(1000);
-    });
-
-    it("0 bytes → 0 ms", () => {
-      expect(pcmBytesToMs(0)).toBe(0);
-    });
-
-    it("48 bytes → 1 ms", () => {
-      expect(pcmBytesToMs(48)).toBe(1);
-    });
-
-    it("非整數毫秒亦如實換算(不四捨五入)", () => {
-      expect(pcmBytesToMs(72)).toBe(1.5);
-    });
-  });
-
   describe("shiftCharTimestamps", () => {
     const base: readonly CharTimestamp[] = [
       { char: "夜", charIndex: 0, startMs: 0, endMs: 120 },

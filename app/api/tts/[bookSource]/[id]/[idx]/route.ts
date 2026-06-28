@@ -12,7 +12,7 @@ import { parseTtsParams } from "./parse-params";
 /**
  * 章節音訊串流 route：GET /api/tts/<bookSource>/<id>/<idx>?voice=...
  *
- * 確保該章已合成並落地（getChapterAudioMeta 命中秒回/否則合成），再回 wav bytes。
+ * 確保該章已合成並落地（getChapterAudioMeta 命中秒回/否則合成），再回 mp3 bytes。
  * 依賴 Azure SDK + node:fs/crypto,必為 nodejs runtime(不可 Edge)。
  *
  * 支援 HTTP Range（206）—— `<audio>` 要能 seek 到「尚未下載」的位置(點字/拖進度條)
@@ -90,18 +90,18 @@ export async function GET(
 
   try {
     const file = await getChapterAudioMeta(bookSource, slug, idxNum, auth, voice);
-    const { size } = await stat(file.wavPath);
+    const { size } = await stat(file.audioPath);
     const range = parseRange(req.headers.get("range"), size);
 
     // 有 Range → 206 部分內容(只讀該區段)。
     if (range) {
       const { start, end } = range;
       const length = end - start + 1;
-      const slice = await readSlice(file.wavPath, start, length);
+      const slice = await readSlice(file.audioPath, start, length);
       return new Response(new Uint8Array(slice), {
         status: 206,
         headers: {
-          "Content-Type": "audio/wav",
+          "Content-Type": "audio/mpeg",
           "Content-Range": `bytes ${start}-${end}/${size}`,
           "Accept-Ranges": "bytes",
           "Content-Length": String(length),
@@ -111,14 +111,14 @@ export async function GET(
     }
 
     // 無 Range → 整檔 200,但聲明 Accept-Ranges(讓瀏覽器知道可 seek)。
-    // 串流而非整檔載入:一章 PCM WAV 可達數十 MB,整檔 buffer 在無 Range 並發拉取下
-    // 會逐請求佔住記憶體;createReadStream 把單請求記憶體壓在固定 chunk 大小。
+    // 串流而非整檔載入:整檔 buffer 在無 Range 並發拉取下會逐請求佔住記憶體;
+    // createReadStream 把單請求記憶體壓在固定 chunk 大小。
     const webStream = Readable.toWeb(
-      createReadStream(file.wavPath),
+      createReadStream(file.audioPath),
     ) as unknown as ReadableStream<Uint8Array>;
     return new Response(webStream, {
       headers: {
-        "Content-Type": "audio/wav",
+        "Content-Type": "audio/mpeg",
         "Content-Length": String(size),
         "Accept-Ranges": "bytes",
         "Cache-Control": IMMUTABLE,

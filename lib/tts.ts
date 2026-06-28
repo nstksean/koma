@@ -17,7 +17,7 @@ import type { CharTimestamp } from "@/src/tts";
  * 章節音訊 orchestrator（server-only）。
  *
  * 負責「合成 → 落地快取 → 命中秒回」：route handler 只呼叫 getChapterAudioMeta，
- * 拿到落地 wav 絕對路徑與逐字 timestamp。換音源（Azure→IQT）時本檔的快取/去重
+ * 拿到落地 mp3 絕對路徑與逐字 timestamp。換音源（Azure→IQT）時本檔的快取/去重
  * 邏輯不動，只換 synthesize 來源。詳見 docs/meta/plans/04-stage3-tts-pipeline.md §4。
  *
  * 依賴 node:fs / node:crypto + Azure SDK，故 runtime 必為 "nodejs"（route 已設）。
@@ -26,11 +26,11 @@ import type { CharTimestamp } from "@/src/tts";
 /** Azure 預設音色（zh-TW 女聲）。 */
 const DEFAULT_VOICE = "zh-TW-HsiaoChenNeural";
 
-/** 快取 json schema 版本：日後改 charIndex 約定/欄位時用來作廢舊檔。 */
-const SCHEMA_VERSION = 1 as const;
+/** 快取 json schema 版本：日後改 charIndex 約定/欄位時用來作廢舊檔。v2 = 改存 MP3。 */
+const SCHEMA_VERSION = 2 as const;
 
 /**
- * 快取根目錄：<tmpdir>/koma-tts/<bookSource>/<voiceSafe>/<slugSafe>/<idx>.{wav,json}。
+ * 快取根目錄：<tmpdir>/koma-tts/<bookSource>/<voiceSafe>/<slugSafe>/<idx>.{mp3,json}。
  * ponytail: 用 os.tmpdir()(Vercel 上 = /tmp，function 唯一可寫處)。ephemeral 且
  * per-instance —— 暖實例內重播命中快取，冷啟動/換實例會重合成、重燒 Azure 額度。
  * 要跨請求持久免重燒，升級成物件儲存(Vercel Blob/R2/S3)，見 docs/how-to/deploy.md。
@@ -39,10 +39,10 @@ const CACHE_ROOT = path.join(os.tmpdir(), "koma-tts");
 
 /**
  * route handler 拿到的章節音訊（落地後）。
- * `wavPath` 給 audio route `fs.readFile`；其餘給 timestamps route。
+ * `audioPath` 給 audio route `fs.readFile`；其餘給 timestamps route。
  */
 export interface ChapterAudioFile {
-  readonly wavPath: string; // 落地 wav 絕對路徑
+  readonly audioPath: string; // 落地 mp3 絕對路徑
   readonly durationMs: number;
   readonly includesPunctuation: false; // Azure 不給標點 boundary，恆 false
   readonly charTimestamps: readonly CharTimestamp[];
@@ -56,7 +56,7 @@ interface CacheMeta {
   readonly schemaVersion: typeof SCHEMA_VERSION;
   readonly engine: "azure";
   readonly voice: string;
-  readonly audioFile: string; // 相對檔名 "<idx>.wav"
+  readonly audioFile: string; // 相對檔名 "<idx>.mp3"
   readonly durationMs: number;
   readonly includesPunctuation: false;
   readonly textHash: string;
@@ -87,8 +87,8 @@ async function readCache(
   expectedHash: string,
 ): Promise<ChapterAudioFile | null> {
   const jsonPath = path.join(dir, `${idx}.json`);
-  const wavPath = path.join(dir, `${idx}.wav`);
-  if (!existsSync(jsonPath) || !existsSync(wavPath)) return null;
+  const audioPath = path.join(dir, `${idx}.mp3`);
+  if (!existsSync(jsonPath) || !existsSync(audioPath)) return null;
 
   let meta: CacheMeta;
   try {
@@ -111,14 +111,14 @@ async function readCache(
   }
 
   return {
-    wavPath,
+    audioPath,
     durationMs: meta.durationMs,
     includesPunctuation: false,
     charTimestamps: meta.charTimestamps as readonly CharTimestamp[],
   };
 }
 
-/** miss 時實際合成並落地（wav + json），回 ChapterAudioFile。 */
+/** miss 時實際合成並落地（mp3 + json），回 ChapterAudioFile。 */
 async function synthesizeAndCache(
   dir: string,
   idx: number,
@@ -132,14 +132,14 @@ async function synthesizeAndCache(
   console.info(`[tts] synth chars=${content.length} voice=${voice} idx=${idx}`);
 
   await mkdir(dir, { recursive: true });
-  const wavPath = path.join(dir, `${idx}.wav`);
+  const audioPath = path.join(dir, `${idx}.mp3`);
   const jsonPath = path.join(dir, `${idx}.json`);
 
   const meta: CacheMeta = {
     schemaVersion: SCHEMA_VERSION,
     engine: "azure",
     voice,
-    audioFile: `${idx}.wav`,
+    audioFile: `${idx}.mp3`,
     durationMs: result.durationMs,
     includesPunctuation: false,
     textHash,
@@ -147,15 +147,15 @@ async function synthesizeAndCache(
     charTimestamps: result.charTimestamps,
   };
 
-  // 先寫 wav 再寫 json：json 是「就緒」標記，避免讀到 json 卻無 wav。
-  await writeFile(wavPath, result.wav);
+  // 先寫 mp3 再寫 json：json 是「就緒」標記，避免讀到 json 卻無音檔。
+  await writeFile(audioPath, result.mp3);
   await writeFile(jsonPath, JSON.stringify(meta), "utf8");
 
   // 寫完才壓上限：prefetch 每進章合成,不淘汰會無上限長。pruneCache 永不丟錯。
   await pruneCache(CACHE_ROOT);
 
   return {
-    wavPath,
+    audioPath,
     durationMs: result.durationMs,
     includesPunctuation: false,
     charTimestamps: result.charTimestamps,
@@ -195,7 +195,7 @@ export async function getChapterAudioMeta(
     // ⚠️ 餵「原始」bookSource/slug：adapter 查找靠的是真實 id，不能用 sanitize 後的值。
     const view = await getChapterView(bookSource, slug, idx);
     const content = view.content;
-    // 空/全空白章節不合成:否則會產出 44-byte 空 WAV 並永久快取成「有效」結果。
+    // 空/全空白章節不合成:否則會產出空音檔並永久快取成「有效」結果。
     // 含「找不到」字樣 → route 對應為 404(非 500),且不落地快取。
     if (!content || content.trim() === "") {
       throw new Error("找不到章節內文");

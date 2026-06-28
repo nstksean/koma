@@ -15,7 +15,7 @@ const DEFAULT_VOICE = "zh-TW-HsiaoChenNeural";
 const MAX_SEGMENT_LEN = 512; // bookSource / slug 長度上限
 
 /**
- * 支援的 Azure 音色 allowlist。`voice` 進到去重 key 與落地快取目錄(data/tts/.../<voice>/),
+ * 支援的 Azure 音色 allowlist。`voice` 進到去重 key 與落地快取目錄(<tmpdir>/koma-tts/.../<voice>/),
  * 若不設限,攻擊者可用 ?voice=a、?voice=b… 每次都 cache miss → 觸發無上限的「付費」
  * Azure 合成 + 在磁碟寫無數攻擊者命名目錄。未在清單內者一律退回預設(不拒絕,容錯且
  * 把所有未知值收斂到同一快取身分)。

@@ -4,11 +4,7 @@ import {
   azureWordsToChars,
   utf16ToCodePointOffset,
 } from "@/src/tts/azure-normalize";
-import {
-  BYTES_PER_MS,
-  pcmBytesToMs,
-  shiftCharTimestamps,
-} from "@/src/tts/stitch";
+import { shiftCharTimestamps } from "@/src/tts/stitch";
 import type { AzureBoundary, CharTimestamp } from "@/src/tts/types";
 
 /**
@@ -54,11 +50,11 @@ function fakeWordBoundaries(chunkText: string, msPerWord = 200): AzureBoundary[]
   return out;
 }
 
-// 鏡像 synthesizeAzureChapter 的逐段拼接;pcm 以「每詞固定 bytes」模擬該段真實時長。
+// 鏡像 synthesizeAzureChapter 的逐段拼接;每段時長以「每詞固定 ms」模擬 SDK audioDuration。
 function stitchChapter(
   plainText: string,
   maxCp: number,
-  bytesPerWord: number,
+  msPerWord: number,
 ): { chunks: readonly { text: string; cpStart: number }[]; skipped: number[]; chars: CharTimestamp[] } {
   const chunks = chunkContent(plainText, maxCp);
   const batches: (readonly CharTimestamp[])[] = [];
@@ -72,8 +68,8 @@ function stitchChapter(
     const boundaries = fakeWordBoundaries(chunk.text);
     const segChars = azureWordsToChars(boundaries, -chunk.cpStart);
     batches.push(shiftCharTimestamps(segChars, cumulativeMs));
-    // 只用 PCM bytes 累積時間(絕不用 boundary ms),與 synthesizeAzureChapter 同。
-    cumulativeMs += pcmBytesToMs(boundaries.length * bytesPerWord);
+    // 用各段真實時長累積(絕不用 boundary ms),與 synthesizeAzureChapter 同。
+    cumulativeMs += boundaries.length * msPerWord;
   });
   return { chunks, skipped, chars: batches.flat() };
 }
@@ -83,17 +79,17 @@ describe("stitch 整合(chunk → normalize(-cpStart) → shift → flatten)", (
   //   "夜色\n\n"(cpStart 0) / "\n\n\n\n"(cpStart 4,純空白→跳過) / "他卻"(cpStart 8)。
   const plainText = "夜色\n\n\n\n\n\n他卻";
   const MAX_CP = 4;
-  const BYTES_PER_WORD = BYTES_PER_MS * 300; // 每詞 300ms 的 PCM(整數毫秒)
+  const MS_PER_WORD = 300; // 每詞 300ms 的合成時長
 
   it("切出三段,中間段為純空白且被跳過", () => {
-    const { chunks, skipped } = stitchChapter(plainText, MAX_CP, BYTES_PER_WORD);
+    const { chunks, skipped } = stitchChapter(plainText, MAX_CP, MS_PER_WORD);
     expect(chunks).toHaveLength(3);
     expect(chunks[1].text.trim()).toBe("");
     expect(skipped).toEqual([1]);
   });
 
   it("每個 charIndex 對齊 [...plainText] 的 code-point index", () => {
-    const { chars } = stitchChapter(plainText, MAX_CP, BYTES_PER_WORD);
+    const { chars } = stitchChapter(plainText, MAX_CP, MS_PER_WORD);
     const cps = [...plainText];
     for (const ct of chars) {
       expect(cps[ct.charIndex]).toBe(ct.char);
@@ -104,17 +100,17 @@ describe("stitch 整合(chunk → normalize(-cpStart) → shift → flatten)", (
   });
 
   it("startMs 跨 chunk seam 全程單調不減", () => {
-    const { chars } = stitchChapter(plainText, MAX_CP, BYTES_PER_WORD);
+    const { chars } = stitchChapter(plainText, MAX_CP, MS_PER_WORD);
     for (let i = 1; i < chars.length; i++) {
       expect(chars[i].startMs).toBeGreaterThanOrEqual(chars[i - 1].startMs);
     }
-    // 後段(他卻)應被平移到第一段 PCM 時長(300ms)之後。
+    // 後段(他卻)應被平移到第一段時長(300ms)之後。
     const ta = chars.find((c) => c.char === "他");
     expect(ta?.startMs).toBe(300);
   });
 
   it("純空白中間段被跳過,不破壞後段(他卻)的 charIndex 對齊", () => {
-    const { chars } = stitchChapter(plainText, MAX_CP, BYTES_PER_WORD);
+    const { chars } = stitchChapter(plainText, MAX_CP, MS_PER_WORD);
     const ta = chars.find((c) => c.char === "他");
     // = 它在 [...plainText] 的真實 index,證明跳過空白段後 cpStart 帳仍正確。
     expect(ta?.charIndex).toBe(8);
@@ -191,7 +187,7 @@ function stitchChapter16(plainText: string, maxCp: number): CharTimestamp[] {
     }));
     const segChars = azureWordsToChars(boundaries, -chunk.cpStart);
     batches.push(shiftCharTimestamps(segChars, cumulativeMs));
-    cumulativeMs += pcmBytesToMs(boundaries.length * BYTES_PER_MS * 300);
+    cumulativeMs += boundaries.length * 300;
   }
   return batches.flat();
 }

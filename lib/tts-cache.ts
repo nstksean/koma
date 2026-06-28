@@ -4,23 +4,23 @@ import path from "node:path";
 /**
  * TTS 落地快取的容量上限淘汰（LRU by mtime）。
  *
- * 開章自動 prefetch 會在每次進章合成並寫 data/tts/<book>/<voice>/<slug>/<idx>.{wav,json}，
+ * 開章自動 prefetch 會在每次進章合成並寫 <tmpdir>/koma-tts/<book>/<voice>/<slug>/<idx>.{mp3,json}，
  * 一本書上千章 → 不淘汰會無上限長。這裡只做一件事：超過上限就由舊到新砍掉整個 entry
- * （wav+json 一起，故不會自製 orphan；冷章被砍後下次進章按需重合成即可）。
+ * （mp3+json 一起，故不會自製 orphan；冷章被砍後下次進章按需重合成即可）。
  *
  * ponytail: 用「總量上限」單一機制涵蓋 review 提的 unbounded growth + orphan sweep
  *   ——以 entry 為單位淘汰天生不留 orphan，毋須另開 orphan sweep。
  *   崩潰中途寫入留下的零星 orphan 由同一個上限一併吃掉，不另外處理。
  */
 
-/** 每個 entry 的兩個檔（<idx>.wav + <idx>.json）合視為一個淘汰單位。 */
+/** 每個 entry 的兩個檔（<idx>.mp3 + <idx>.json）合視為一個淘汰單位。 */
 interface CacheEntry {
   readonly files: readonly string[];
   readonly size: number; // bytes(wav+json 總和)
   readonly mtimeMs: number; // entry 內最新檔的 mtime,作為 LRU 排序鍵
 }
 
-/** 預設上限：1GB,可用 TTS_CACHE_MAX_MB 覆寫。一章 wav 約 7–13MB,1GB ≈ 80–140 章熱快取。 */
+/** 預設上限：1GB,可用 TTS_CACHE_MAX_MB 覆寫。一章 mp3 約 1–2MB,1GB ≈ 500–1000 章熱快取。 */
 function defaultMaxBytes(): number {
   const mb = Number(process.env.TTS_CACHE_MAX_MB);
   return (Number.isFinite(mb) && mb > 0 ? mb : 1024) * 1024 * 1024;
@@ -46,7 +46,7 @@ async function collectEntries(files: readonly string[]): Promise<CacheEntry[]> {
   const groups = new Map<string, { files: string[]; size: number; mtimeMs: number }>();
   for (const file of files) {
     const ext = path.extname(file);
-    if (ext !== ".wav" && ext !== ".json") continue; // 只認快取自家檔
+    if (ext !== ".mp3" && ext !== ".json") continue; // 只認快取自家檔
     const key = file.slice(0, -ext.length);
     let s;
     try {
